@@ -1,1 +1,40 @@
-{}
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadS3Posture",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListAllMyBuckets",
+        "s3:GetBucketPolicyStatus",
+        "s3:GetBucketPublicAccessBlock",
+        "s3:GetEncryptionConfiguration"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ReadIamPosture",
+      "Effect": "Allow",
+      "Action": [
+        "iam:ListPolicies",
+        "iam:GetPolicyVersion",
+        "iam:ListUsers",
+        "iam:GetLoginProfile",
+        "iam:ListMFADevices"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ReportToConfig",
+      "Effect": "Allow",
+      "Action": "config:PutEvaluations",
+      "Resource": "*"
+    },
+    {
+      "Sid": "Logs",
+      "Effect": "Allow",
+      "Action": ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"],
+      "Resource": "arn:aws:logs:*:*:*"
+    }
+  ]
+}

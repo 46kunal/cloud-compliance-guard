@@ -1,1 +1,14 @@
-<!-- audit_trail.html -->
+{% extends "base.html" %}
+{% block content %}
+<h2>Hash-chained audit trail</h2>
+<p>Chain integrity: <strong id="chain-status">checking…</strong></p>
+<table>
+  <thead>
+    <tr><th>#</th><th>Time (UTC)</th><th>Event</th><th>Details</th><th>Previous hash</th><th>Entry hash</th></tr>
+  </thead>
+  <tbody id="audit-body">
+    <tr><td colspan="6">Loading…</td></tr>
+  </tbody>
+</table>
+<script>window.PAGE = "audit";</script>
+{% endblock %}

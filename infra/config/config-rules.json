@@ -1,1 +1,16 @@
-{}
+{
+  "ConfigRuleName": "policyguard-rule-engine",
+  "Description": "PolicyGuard custom rule: public S3, unencrypted S3, wildcard IAM policies, console users without MFA.",
+  "Scope": {},
+  "Source": {
+    "Owner": "CUSTOM_LAMBDA",
+    "SourceIdentifier": "arn:aws:lambda:REGION:ACCOUNT_ID:function:policyguard-rule-engine",
+    "SourceDetails": [
+      {
+        "EventSource": "aws.config",
+        "MessageType": "ScheduledNotification",
+        "MaximumExecutionFrequency": "One_Hour"
+      }
+    ]
+  }
+}

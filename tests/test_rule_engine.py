@@ -78,7 +78,8 @@ def test_run_rule_engine_detects_violation():
         },
     ]
 
-    violations = run_rule_engine(resources)
+    # public-bucket-123 is also unencrypted, so filter to the public_storage rule
+    violations = [v for v in run_rule_engine(resources) if v["rule"] == "public_storage"]
     assert len(violations) == 1
     assert violations[0]["rule"] == "public_storage"
     assert violations[0]["resource_id"] == "public-bucket-123"
@@ -102,6 +103,65 @@ def test_lambda_handler():
     }
     response = lambda_handler(event, None)
     assert response["statusCode"] == 200
-    body = json.loads(response["body"])
+    body = [v for v in json.loads(response["body"]) if v["rule"] == "public_storage"]
     assert len(body) == 1
     assert body[0]["resource_id"] == "public-bucket-789"
+
+
+from lambdas.rule_engine.rules.encryption_at_rest import check as check_encryption
+from lambdas.rule_engine.rules.iam_wildcard_policy import check as check_wildcard
+from lambdas.rule_engine.rules.mfa_required import check as check_mfa
+
+
+def _resource(resource_type, resource_id, **extra):
+    base = {"resource_type": resource_type, "provider": "aws", "resource_id": resource_id,
+            "is_public": False, "encrypted": True, "permissions": [], "tags": {}}
+    return {**base, **extra}
+
+
+def test_encryption_at_rest_flagged():
+    res = check_encryption(_resource("object_storage", "plain-bucket", encrypted=False))
+    assert res == {"compliant": False, "rule": "encryption_at_rest", "resource_id": "plain-bucket"}
+
+
+def test_encryption_at_rest_compliant():
+    assert check_encryption(_resource("object_storage", "enc-bucket"))["compliant"] is True
+
+
+def test_encryption_at_rest_ignores_non_storage():
+    assert check_encryption(_resource("iam_user", "bob", encrypted=False))["compliant"] is True
+
+
+def test_iam_wildcard_policy_flagged():
+    stmts = [{"Effect": "Allow", "Action": "*", "Resource": "*"}]
+    res = check_wildcard(_resource("iam_policy", "arn:policy/Admin", permissions=stmts))
+    assert res == {"compliant": False, "rule": "wildcard_permission", "resource_id": "arn:policy/Admin"}
+
+
+def test_iam_wildcard_service_star_flagged():
+    stmts = [{"Effect": "Allow", "Action": ["s3:*"], "Resource": ["*"]}]
+    assert check_wildcard(_resource("iam_policy", "p", permissions=stmts))["compliant"] is False
+
+
+def test_iam_wildcard_policy_compliant():
+    stmts = [
+        {"Effect": "Allow", "Action": "s3:GetObject", "Resource": "arn:aws:s3:::b/*"},
+        {"Effect": "Deny", "Action": "*", "Resource": "*"},
+    ]
+    assert check_wildcard(_resource("iam_policy", "p", permissions=stmts))["compliant"] is True
+
+
+def test_mfa_required_flagged():
+    res = check_mfa(_resource("iam_user", "intern", has_console_access=True, mfa_enabled=False))
+    assert res == {"compliant": False, "rule": "mfa_required", "resource_id": "intern"}
+
+
+def test_mfa_required_compliant():
+    assert check_mfa(_resource("iam_user", "a", has_console_access=True, mfa_enabled=True))["compliant"] is True
+    assert check_mfa(_resource("iam_user", "svc", has_console_access=False, mfa_enabled=False))["compliant"] is True
+
+
+def test_new_rules_have_clauses():
+    for rule in ("encryption_at_rest", "wildcard_permission", "mfa_required"):
+        assert rule in RULE_TO_CLAUSE
+    assert RULE_TO_CLAUSE["encryption_at_rest"].startswith("PCI-DSS Requirement 3")

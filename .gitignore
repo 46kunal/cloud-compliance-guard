@@ -39,3 +39,4 @@ coverage.json
 *.swp
 *.swo
 .DS_Store
+db/*.db

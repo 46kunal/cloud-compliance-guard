@@ -1,1 +1,17 @@
-{}
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AppendAuditLog",
+      "Effect": "Allow",
+      "Action": ["dynamodb:PutItem", "dynamodb:BatchWriteItem"],
+      "Resource": "arn:aws:dynamodb:*:*:table/PolicyGuardAuditLog"
+    },
+    {
+      "Sid": "Logs",
+      "Effect": "Allow",
+      "Action": ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"],
+      "Resource": "arn:aws:logs:*:*:*"
+    }
+  ]
+}
