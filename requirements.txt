@@ -4,3 +4,6 @@ pytest>=8.0.0
 
 # uncomment when adding blockchain anchoring
 # web3>=6.0.0
+
+# tests only (in-memory AWS for integration tests)
+moto[s3,iam,sts]>=5.0.0

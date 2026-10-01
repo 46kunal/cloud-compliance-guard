@@ -8,25 +8,31 @@ Nothing in the local demo needs deployment — the Lambda steps in section 5 are
 ```bash
 git pull
 pip install -r requirements.txt
-python -m pytest tests/ -v          # 38 tests, no AWS needed
+python -m pytest tests/ -v          # 40 tests, no AWS needed (moto mocks AWS in tests)
 aws sts get-caller-identity          # confirm creds/account
 ```
 
-## 2. Run the demo
+## 2. Create demo misconfigurations in the account (one command)
 
 ```bash
-# Simulated resources (no AWS calls) — always works
-python demo/simulate_violation.py --tamper
-
-# Real AWS account scan (S3 + IAM), store results, then open the dashboard
-python demo/simulate_violation.py --live --save
-python dashboard/app.py              # http://127.0.0.1:5000  and  /audit
-
-# Seed the dashboard with simulated data instead
-python db/seed_data.py
+python infra/demo_resources.py create     # public bucket, wildcard IAM policy + role, user without MFA
 ```
 
-Individual stages (each has a CLI mode that runs the pipeline up to that stage on the real account):
+All resources are prefixed `policyguard-demo` and are visible in the S3 and IAM consoles.
+The bucket is empty; the user has a random password nobody knows; the wildcard policy is only on
+a role assumable from inside this account. Remove everything with `python infra/demo_resources.py delete`.
+
+Note: since Jan 2023 every S3 bucket is encrypted (SSE-S3) by default, so `encryption_at_rest`
+will normally report 0 on a real account — that is the correct result.
+
+## 3. Run the pipeline against the account
+
+```bash
+python demo/simulate_violation.py --save    # scans the account, prints [DETECT]/[CLASSIFY]/[REMEDIATE]/[AUDIT]
+python dashboard/app.py                     # http://127.0.0.1:5000  and  /audit
+```
+
+Individual stages (each has a CLI mode that runs the pipeline up to that stage):
 
 ```bash
 python lambdas/rule_engine/handler.py       # [DETECT]
@@ -35,30 +41,6 @@ python lambdas/remediation/handler.py       # [REMEDIATE] (dry-run)
 python lambdas/audit_logger/handler.py      # [AUDIT]
 ```
 
-## 3. Create real misconfigurations to detect (optional, use a sandbox account)
-
-Replace `<unique>` with something unique, e.g. your initials + date.
-
-```bash
-# Wildcard IAM policy (created but NOT attached to anyone -> harmless)
-aws iam create-policy --policy-name PolicyGuardDemoAdmin \
-  --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}'
-
-# IAM user with console access and no MFA (pick your own throwaway password)
-aws iam create-user --user-name policyguard-demo-user
-aws iam create-login-profile --user-name policyguard-demo-user --password '<TempPassw0rd!>' --password-reset-required
-
-# Public bucket: needs Block Public Access off on the bucket (and account-level BPA off)
-aws s3api create-bucket --bucket policyguard-demo-<unique> --region us-east-1
-aws s3api put-public-access-block --bucket policyguard-demo-<unique> \
-  --public-access-block-configuration BlockPublicAcls=false,IgnorePublicAcls=false,BlockPublicPolicy=false,RestrictPublicBuckets=false
-aws s3api put-bucket-policy --bucket policyguard-demo-<unique> \
-  --policy '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*","Action":"s3:GetObject","Resource":"arn:aws:s3:::policyguard-demo-<unique>/*"}]}'
-```
-
-Note: since Jan 2023 every S3 bucket is encrypted (SSE-S3) by default, so `encryption_at_rest`
-will usually only fire in the simulated demo.
-
 ## 4. Live remediation (the safety gate)
 
 Remediation is dry-run by default. A real fix only happens when BOTH are true:
@@ -66,16 +48,14 @@ Remediation is dry-run by default. A real fix only happens when BOTH are true:
 1. `POLICYGUARD_DRY_RUN=false` is set, and
 2. the resource ID is in `lambdas/remediation/safety/allowlist.json`.
 
-```json
-{ "allowed_resource_ids": ["policyguard-demo-<unique>", "arn:aws:iam::<ACCOUNT_ID>:policy/PolicyGuardDemoAdmin"] }
-```
+Paste the allowlist JSON that `demo_resources.py create` printed.
 
 ```bash
-POLICYGUARD_DRY_RUN=false python demo/simulate_violation.py --live --save    # bash
-# PowerShell:  $env:POLICYGUARD_DRY_RUN="false"; python demo/simulate_violation.py --live --save
+POLICYGUARD_DRY_RUN=false python demo/simulate_violation.py --save    # bash
+# PowerShell:  $env:POLICYGUARD_DRY_RUN="false"; python demo/simulate_violation.py --save
 ```
 
-Then re-run `python demo/simulate_violation.py --live` — the public bucket violation is gone.
+Then re-run `python demo/simulate_violation.py` — the public bucket violation is gone.
 Actions: `close_public_bucket` (enables Public Access Block), `enforce_encryption` (AES256 default),
 `revoke_iam_permission` (detaches the policy from all users/groups/roles; the policy is kept).
 `mfa_required` is never auto-fixed (needs a human device) — reported as manual review.
@@ -133,8 +113,5 @@ aws configservice put-config-rule --config-rule file://build/config-rule.json
 ## 6. Cleanup
 
 ```bash
-aws iam delete-login-profile --user-name policyguard-demo-user
-aws iam delete-user --user-name policyguard-demo-user
-aws iam delete-policy --policy-arn arn:aws:iam::$ACCOUNT_ID:policy/PolicyGuardDemoAdmin
-aws s3 rb s3://policyguard-demo-<unique> --force
+python infra/demo_resources.py delete
 ```

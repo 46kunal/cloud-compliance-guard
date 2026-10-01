@@ -48,6 +48,6 @@ chains all four stages in-process.
 
 ## Known limits
 
-- Compliance score is a flat penalty (HIGH 15 / MEDIUM 8 / LOW 3) — not a per-framework pass rate.
+- Compliance score = % of scanned resources with zero violations (not weighted by severity).
 - Lambdas are not chained by Step Functions/EventBridge; the local demo chains them in-process.
 - EC2/KMS collectors are not implemented (the rule contract supports adding them).

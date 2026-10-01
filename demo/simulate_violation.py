@@ -2,8 +2,9 @@
 End-to-end PolicyGuard demo:
     rule_engine -> risk_classifier -> remediation -> audit_logger
 
-    python demo/simulate_violation.py            # fake resources, no AWS needed
-    python demo/simulate_violation.py --live     # scan the real AWS account (needs creds)
+Scans the AWS account of the configured credentials (aws configure) — no simulated data.
+
+    python demo/simulate_violation.py            # scan the real AWS account
     python demo/simulate_violation.py --save     # also store results for the dashboard
     python demo/simulate_violation.py --tamper   # show hash-chain tamper detection
 
@@ -26,25 +27,6 @@ from lambdas.audit_logger.hash_chain import verify_chain
 from lambdas.audit_logger.blockchain_anchor import anchor_hash
 
 
-def _res(resource_type, resource_id, **extra):
-    base = {"resource_type": resource_type, "provider": "aws", "resource_id": resource_id,
-            "is_public": False, "encrypted": True, "permissions": [], "tags": {}}
-    return {**base, **extra}
-
-
-FAKE_RESOURCES = [
-    _res("object_storage", "customer-data-public", is_public=True, encrypted=False),
-    _res("object_storage", "payment-logs", encrypted=False),
-    _res("object_storage", "secure-backups"),
-    _res("iam_policy", "arn:aws:iam::123456789012:policy/AdminEverything",
-         permissions=[{"Effect": "Allow", "Action": "*", "Resource": "*"}]),
-    _res("iam_policy", "arn:aws:iam::123456789012:policy/ReadOnlyS3",
-         permissions=[{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "arn:aws:s3:::reports/*"}]),
-    _res("iam_user", "intern-dev", has_console_access=True, mfa_enabled=False),
-    _res("iam_user", "ops-admin", has_console_access=True, mfa_enabled=True),
-]
-
-
 def run_pipeline(resources: list, dry_run: bool = None, chain: list = None):
     classified = classify_violations(run_rule_engine(resources))
     remediation = remediate_violations(classified, dry_run=dry_run)
@@ -54,14 +36,19 @@ def run_pipeline(resources: list, dry_run: bool = None, chain: list = None):
 
 def main():
     parser = argparse.ArgumentParser(description="PolicyGuard end-to-end demo")
-    parser.add_argument("--live", action="store_true", help="scan real AWS resources instead of fake ones")
     parser.add_argument("--save", action="store_true", help="store results in db/policyguard.db for the dashboard")
     parser.add_argument("--tamper", action="store_true", help="demonstrate tamper detection on the audit chain")
     args = parser.parse_args()
 
-    resources = get_all_resources() if args.live else FAKE_RESOURCES
-    source = "LIVE AWS" if args.live else "simulated"
-    print(f"=== PolicyGuard scan: {len(resources)} resources ({source}) ===")
+    import boto3
+    try:
+        identity = boto3.client("sts").get_caller_identity()
+    except Exception as e:
+        sys.exit(f"No usable AWS credentials ({e}). Run 'aws configure' first.")
+
+    resources = get_all_resources()
+    print(f"=== PolicyGuard scan of AWS account {identity['Account']} as {identity['Arn']} ===")
+    print(f"=== {len(resources)} resources (S3 buckets, IAM policies, IAM users) ===")
     print()
 
     conn = None

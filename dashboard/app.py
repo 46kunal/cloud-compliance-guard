@@ -1,7 +1,7 @@
 """
 PolicyGuard compliance dashboard.
 
-    python db/seed_data.py                      # or: python demo/simulate_violation.py --live --save
+    python demo/simulate_violation.py --save   # scan your AWS account into the dashboard DB
     python dashboard/app.py                     # http://127.0.0.1:5000
 """
 import os
