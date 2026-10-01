@@ -19,6 +19,11 @@
   </div>
 </section>
 
+<p class="scan-bar">
+  Last AWS scan: <strong id="last-scan">–</strong>
+  <button id="scan-now" type="button">Scan now</button>
+</p>
+
 <h2>Violations</h2>
 <table>
   <thead>
@@ -28,6 +33,6 @@
     <tr><td colspan="5">Loading…</td></tr>
   </tbody>
 </table>
-<p class="muted">Auto-refreshes every 10 s.</p>
+<p class="muted">The AWS account is re-scanned automatically every 20 s; this page refreshes every 10 s.</p>
 <script>window.PAGE = "dashboard";</script>
 {% endblock %}

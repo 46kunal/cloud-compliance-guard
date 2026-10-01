@@ -2,7 +2,7 @@ from collections import Counter
 
 from flask import Blueprint, jsonify
 
-from db.schema import connect, get_resources_scanned, get_violations
+from db.schema import connect, get_last_scan_time, get_resources_scanned, get_violations
 
 compliance_score_bp = Blueprint("compliance_score", __name__)
 
@@ -20,12 +20,14 @@ def compliance_score():
     try:
         violations = get_violations(conn)
         resources_scanned = get_resources_scanned(conn)
+        last_scan = get_last_scan_time(conn)
     finally:
         conn.close()
 
     return jsonify({
         "score": compute_score(violations, resources_scanned),
         "resources_scanned": resources_scanned,
+        "last_scan": last_scan,
         "total_violations": len(violations),
         "by_severity": dict(Counter(v["severity"] for v in violations)),
         "by_rule": dict(Counter(v["rule"] for v in violations)),

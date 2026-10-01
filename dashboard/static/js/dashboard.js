@@ -50,6 +50,7 @@ async function loadDashboard() {
   document.getElementById("score").textContent = score.score + "%";
   document.getElementById("resources").textContent = score.resources_scanned;
   document.getElementById("total").textContent = score.total_violations;
+  document.getElementById("last-scan").textContent = score.last_scan || "never";
   document.getElementById("severity-breakdown").textContent =
     ["HIGH", "MEDIUM", "LOW"].map((s) => s + ": " + (score.by_severity[s] || 0)).join("  ·  ");
 
@@ -99,5 +100,22 @@ function start(loader) {
   setInterval(run, REFRESH_MS);
 }
 
-if (window.PAGE === "dashboard") start(loadDashboard);
+async function scanNow(button) {
+  button.disabled = true;
+  button.textContent = "Scanning AWS…";
+  try {
+    const res = await fetch("/api/scan", { method: "POST" });
+    if (!res.ok) throw new Error("scan returned " + res.status);
+    await loadDashboard();
+  } finally {
+    button.disabled = false;
+    button.textContent = "Scan now";
+  }
+}
+
+if (window.PAGE === "dashboard") {
+  start(loadDashboard);
+  const button = document.getElementById("scan-now");
+  button.addEventListener("click", () => scanNow(button).catch((err) => alert(err.message)));
+}
 if (window.PAGE === "audit") start(loadAudit);
