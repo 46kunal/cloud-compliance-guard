@@ -55,11 +55,11 @@ if __name__ == "__main__":
         sys.path.insert(0, project_root)
 
     from lambdas.rule_engine.handler import (
-        get_normalized_s3_resources,
+        get_all_resources,
         run_rule_engine,
     )
 
-    resources = get_normalized_s3_resources()
+    resources = get_all_resources()
     violations = run_rule_engine(resources)
     classified_results = classify_violations(violations)
 
