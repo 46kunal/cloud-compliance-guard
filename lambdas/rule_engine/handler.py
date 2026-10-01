@@ -19,6 +19,19 @@ except ModuleNotFoundError:
         }
 
 
+def _policy_allows_anyone(policy: dict) -> bool:
+    """True if any unconditional Allow statement has Principal "*" (or {"AWS": "*"})."""
+    statements = policy.get("Statement", [])
+    if isinstance(statements, dict):
+        statements = [statements]
+    for s in statements:
+        principal = s.get("Principal")
+        anyone = principal == "*" or (isinstance(principal, dict) and principal.get("AWS") in ("*", ["*"]))
+        if s.get("Effect") == "Allow" and anyone and not s.get("Condition"):
+            return True
+    return False
+
+
 def get_normalized_s3_resources() -> list:
     """
     Lists S3 buckets using boto3, checks policy status for each bucket,
@@ -38,9 +51,11 @@ def get_normalized_s3_resources() -> list:
             is_public = False
             try:
                 policy_status = s3_client.get_bucket_policy_status(Bucket=bucket_name)
-                is_public = (
-                    policy_status.get("PolicyStatus", {}).get("IsPublic", False)
-                )
+                is_public = policy_status.get("PolicyStatus", {}).get("IsPublic", False)
+                if not is_public:
+                    # Emulators (moto/LocalStack) don't compute IsPublic: evaluate the policy ourselves too
+                    policy = json.loads(s3_client.get_bucket_policy(Bucket=bucket_name)["Policy"])
+                    is_public = _policy_allows_anyone(policy)
             except Exception:
                 is_public = False
 
