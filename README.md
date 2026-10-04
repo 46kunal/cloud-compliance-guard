@@ -70,14 +70,14 @@ policyguard/
 └── docs/                              # Architecture specs, compliance mappings, and reports
 ```
 
-* **[infra/](file:///d:/policyguard-cc/policyguard/infra)**: AWS IAM policy JSON files, AWS Config rule definitions, and setup notes.
-* **[lambdas/](file:///d:/policyguard-cc/policyguard/lambdas)**: Core serverless Python functions (`rule_engine`, `risk_classifier`, `remediation`, `audit_logger`).
-* **[dashboard/](file:///d:/policyguard-cc/policyguard/dashboard)**: Flask web dashboard routes, HTML templates, CSS, and JavaScript interface files.
-* **[db/](file:///d:/policyguard-cc/policyguard/db)**: Database schemas and sample data generation scripts.
-* **[blockchain/](file:///d:/policyguard-cc/policyguard/blockchain)**: Solidity contracts (`AuditAnchor.sol`) and Hardhat deployment scripts.
-* **[tests/](file:///d:/policyguard-cc/policyguard/tests)**: Pytest test suite covering rule evaluations, risk scoring, remediation safety, and audit logs.
-* **[demo/](file:///d:/policyguard-cc/policyguard/demo)**: Violation simulation script (`simulate_violation.py`) and step-by-step demonstration notes.
-* **[docs/](file:///d:/policyguard-cc/policyguard/docs)**: Extended architectural documentation and regulatory compliance matrix.
+* **[infra/](file:///d:/policyguard-cc/infra)**: AWS IAM policy JSON files, AWS Config rule definitions, and setup notes.
+* **[lambdas/](file:///d:/policyguard-cc/lambdas)**: Core serverless Python functions (`rule_engine`, `risk_classifier`, `remediation`, `audit_logger`).
+* **[dashboard/](file:///d:/policyguard-cc/dashboard)**: Flask web dashboard routes, HTML templates, CSS, and JavaScript interface files.
+* **[db/](file:///d:/policyguard-cc/db)**: Database schemas and sample data generation scripts.
+* **[blockchain/](file:///d:/policyguard-cc/blockchain)**: Solidity contracts (`AuditAnchor.sol`) and Hardhat deployment scripts.
+* **[tests/](file:///d:/policyguard-cc/tests)**: Pytest test suite covering rule evaluations, risk scoring, remediation safety, and audit logs.
+* **[demo/](file:///d:/policyguard-cc/demo)**: Violation simulation script (`simulate_violation.py`) and step-by-step demonstration notes.
+* **[docs/](file:///d:/policyguard-cc/docs)**: Extended architectural documentation and regulatory compliance matrix.
 
 ---
 
@@ -156,7 +156,7 @@ PolicyGuard maps technical cloud violations to a two-tier compliance framework m
 * **Tier 1 — Privacy (DPDP Act 2023 Sec. 8(5) & GDPR Art. 32)**: Mandates reasonable security safeguards and access controls for resources tagged as processing personal data (`handles_personal_data=true`).
 * **Tier 2 — Security Hygiene (CIS AWS Foundations Benchmark)**: Industry-standard security benchmarks governing public access restrictions, encryption at rest, administrative port security, and IAM least privilege.
 
-> For a complete mapping of all PolicyGuard rules to regulatory controls, refer to [`docs/compliance_mapping.md`](file:///d:/policyguard-cc/policyguard/docs/compliance_mapping.md).
+> For a complete mapping of all PolicyGuard rules to regulatory controls, refer to [`docs/compliance_mapping.md`](file:///d:/policyguard-cc/docs/compliance_mapping.md).
 
 ---
 
