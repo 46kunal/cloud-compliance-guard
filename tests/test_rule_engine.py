@@ -53,7 +53,7 @@ def test_s3_public_bucket_non_object_storage():
 
 def test_framework_mapping_clause():
     assert "public_storage" in RULE_TO_CLAUSE
-    assert RULE_TO_CLAUSE["public_storage"] == "GDPR Article 32 — Security of Processing"
+    assert RULE_TO_CLAUSE["public_storage"].startswith("CIS AWS")
 
 
 def test_run_rule_engine_detects_violation():
@@ -65,7 +65,7 @@ def test_run_rule_engine_detects_violation():
             "is_public": True,
             "encrypted": False,
             "permissions": [],
-            "tags": {},
+            "tags": {"handles_personal_data": "true"},
         },
         {
             "resource_type": "object_storage",
@@ -83,7 +83,8 @@ def test_run_rule_engine_detects_violation():
     assert len(violations) == 1
     assert violations[0]["rule"] == "public_storage"
     assert violations[0]["resource_id"] == "public-bucket-123"
-    assert violations[0]["clause"] == "GDPR Article 32 — Security of Processing"
+    assert violations[0]["tier"] == "PRIVACY"
+    assert "DPDP" in violations[0]["clause"]
     assert violations[0]["compliant"] is False
 
 
@@ -162,6 +163,84 @@ def test_mfa_required_compliant():
 
 
 def test_new_rules_have_clauses():
-    for rule in ("encryption_at_rest", "wildcard_permission", "mfa_required"):
+    for rule in ("encryption_at_rest", "wildcard_permission", "mfa_required", "open_admin_ports"):
         assert rule in RULE_TO_CLAUSE
-    assert RULE_TO_CLAUSE["encryption_at_rest"].startswith("PCI-DSS Requirement 3")
+    assert RULE_TO_CLAUSE["encryption_at_rest"].startswith("CIS AWS")
+
+
+from lambdas.rule_engine.rules.open_admin_ports import check as check_open_admin_ports
+
+
+def test_open_admin_ports_flagged():
+    permissions = [{
+        "IpProtocol": "tcp",
+        "FromPort": 22,
+        "ToPort": 22,
+        "IpRanges": [{"CidrIp": "0.0.0.0/0"}]
+    }]
+    res = check_open_admin_ports(_resource("security_group", "sg-123", permissions=permissions))
+    assert res == {"compliant": False, "rule": "open_admin_ports", "resource_id": "sg-123"}
+
+
+def test_open_admin_ports_compliant():
+    permissions = [{
+        "IpProtocol": "tcp",
+        "FromPort": 22,
+        "ToPort": 22,
+        "IpRanges": [{"CidrIp": "10.0.0.0/8"}]
+    }]
+    res = check_open_admin_ports(_resource("security_group", "sg-safe", permissions=permissions))
+    assert res["compliant"] is True
+
+
+def test_tier_classification_security_tier():
+    resources = [{
+        "resource_type": "object_storage",
+        "provider": "aws",
+        "resource_id": "sec-bucket",
+        "is_public": True,
+        "encrypted": False,
+        "permissions": [],
+        "tags": {"handles_personal_data": "false"},
+    }]
+    violations = [v for v in run_rule_engine(resources) if v["rule"] == "public_storage"]
+    assert len(violations) == 1
+    v = violations[0]
+    assert v["tier"] == "SECURITY"
+    assert v["clause"].startswith("CIS AWS")
+    assert "DPDP" not in v["clause"]
+    assert "GDPR" not in v["clause"]
+
+
+def test_tier_classification_privacy_tier():
+    resources = [{
+        "resource_type": "object_storage",
+        "provider": "aws",
+        "resource_id": "priv-bucket",
+        "is_public": True,
+        "encrypted": False,
+        "permissions": [],
+        "tags": {"handles_personal_data": "true"},
+    }]
+    violations = [v for v in run_rule_engine(resources) if v["rule"] == "public_storage"]
+    assert len(violations) == 1
+    v = violations[0]
+    assert v["tier"] == "PRIVACY"
+    assert "DPDP" in v["clause"]
+
+
+def test_tier_classification_no_tags_defaults_to_security():
+    resources = [{
+        "resource_type": "object_storage",
+        "provider": "aws",
+        "resource_id": "untagged-bucket",
+        "is_public": True,
+        "encrypted": False,
+        "permissions": [],
+        "tags": {},
+    }]
+    violations = [v for v in run_rule_engine(resources) if v["rule"] == "public_storage"]
+    assert len(violations) == 1
+    v = violations[0]
+    assert v["tier"] == "SECURITY"
+    assert v["clause"].startswith("CIS AWS")

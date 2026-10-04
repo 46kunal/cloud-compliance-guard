@@ -6,17 +6,37 @@ import sys
 import boto3
 
 try:
-    from lambdas.rule_engine.framework_mapping import RULE_TO_CLAUSE
+    from lambdas.rule_engine.framework_mapping import (
+        PRIVACY_CLAUSE_MAP,
+        SECURITY_CONTROL_MAP,
+        RULE_TO_CLAUSE,
+    )
 except ModuleNotFoundError:
     try:
-        from framework_mapping import RULE_TO_CLAUSE
+        from framework_mapping import (
+            PRIVACY_CLAUSE_MAP,
+            SECURITY_CONTROL_MAP,
+            RULE_TO_CLAUSE,
+        )
     except ModuleNotFoundError:
-        RULE_TO_CLAUSE = {
-            "public_storage": "GDPR Article 32 — Security of Processing",
-            "encryption_at_rest": "PCI-DSS Requirement 3 — Protect Stored Account Data",
-            "wildcard_permission": "PCI-DSS Requirement 7 — Restrict Access by Business Need to Know",
-            "mfa_required": "PCI-DSS Requirement 8.4 — Multi-Factor Authentication",
-        }
+        _fm_path = os.path.join(os.path.dirname(__file__), "framework_mapping.py")
+        _spec = importlib.util.spec_from_file_location("framework_mapping", _fm_path)
+        _fm = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_fm)
+        PRIVACY_CLAUSE_MAP = _fm.PRIVACY_CLAUSE_MAP
+        SECURITY_CONTROL_MAP = _fm.SECURITY_CONTROL_MAP
+        RULE_TO_CLAUSE = _fm.RULE_TO_CLAUSE
+
+try:
+    from lambdas.tier_classifier import classify_tier
+except ModuleNotFoundError:
+    try:
+        from tier_classifier import classify_tier
+    except ModuleNotFoundError:
+        def classify_tier(res):
+            tags = res.get("tags", {}) if isinstance(res, dict) else {}
+            hpd = str(tags.get("handles_personal_data", "")).lower()
+            return "PRIVACY" if hpd in ("true", "1", "yes") else "SECURITY"
 
 
 def _policy_allows_anyone(policy: dict) -> bool:
@@ -71,11 +91,21 @@ def get_normalized_s3_resources() -> list:
             encrypted = False
             try:
                 enc = s3_client.get_bucket_encryption(Bucket=bucket_name)
-                encrypted = bool(
-                    enc.get("ServerSideEncryptionConfiguration", {}).get("Rules")
-                )
+                rules = enc.get("ServerSideEncryptionConfiguration", {}).get("Rules", [])
+                for r in rules:
+                    algo = r.get("ApplyServerSideEncryptionByDefault", {}).get("SSEAlgorithm")
+                    if algo in ("aws:kms", "aws:kms:dsse"):
+                        encrypted = True
+                        break
             except Exception:
                 encrypted = False
+
+            tags = {}
+            try:
+                tag_res = s3_client.get_bucket_tagging(Bucket=bucket_name)
+                tags = {t["Key"]: t["Value"] for t in tag_res.get("TagSet", []) if "Key" in t and "Value" in t}
+            except Exception:
+                tags = {}
 
             resources.append({
                 "resource_type": "object_storage",
@@ -84,7 +114,7 @@ def get_normalized_s3_resources() -> list:
                 "is_public": is_public,
                 "encrypted": encrypted,
                 "permissions": [],
-                "tags": {},
+                "tags": tags,
             })
     except Exception as e:
         print(f"[DETECT] WARNING: S3 scan failed: {e}", file=sys.stderr)
@@ -158,9 +188,48 @@ def get_normalized_iam_resources() -> list:
     return resources
 
 
+def get_normalized_ec2_resources() -> list:
+    """
+    Lists EC2 security groups using boto3 and returns a list of normalized resource dicts.
+    """
+    resources = []
+    try:
+        region = boto3.session.Session().region_name or "us-east-1"
+        ec2_client = boto3.client("ec2", region_name=region)
+        response = ec2_client.describe_security_groups()
+        sgs = response.get("SecurityGroups", [])
+
+        for sg in sgs:
+            sg_id = sg.get("GroupId")
+            if not sg_id:
+                continue
+
+            tags = {}
+            for tag in sg.get("Tags", []):
+                if "Key" in tag and "Value" in tag:
+                    tags[tag["Key"]] = tag["Value"]
+
+            ip_permissions = sg.get("IpPermissions", [])
+
+            resources.append({
+                "resource_type": "security_group",
+                "provider": "aws",
+                "resource_id": sg_id,
+                "group_name": sg.get("GroupName"),
+                "is_public": False,
+                "encrypted": True,
+                "permissions": ip_permissions,
+                "tags": tags,
+            })
+    except Exception as e:
+        print(f"[DETECT] WARNING: EC2 scan failed: {e}", file=sys.stderr)
+
+    return resources
+
+
 def get_all_resources() -> list:
     """Merges every resource collector's output."""
-    return get_normalized_s3_resources() + get_normalized_iam_resources()
+    return get_normalized_s3_resources() + get_normalized_iam_resources() + get_normalized_ec2_resources()
 
 
 def _get_rule_modules():
@@ -209,16 +278,23 @@ def run_rule_engine(resources: list) -> list:
     violations = []
 
     for resource in resources:
+        tier = classify_tier(resource)
         for rule_mod in rule_modules:
             result = rule_mod.check(resource)
             if isinstance(result, dict) and not result.get("compliant", True):
                 rule_name = result.get("rule", "unknown")
                 resource_id = result.get("resource_id", resource.get("resource_id"))
-                clause = RULE_TO_CLAUSE.get(rule_name, "N/A")
+
+                if tier == "PRIVACY":
+                    clause = PRIVACY_CLAUSE_MAP.get(rule_name, RULE_TO_CLAUSE.get(rule_name, "N/A"))
+                else:
+                    clause = SECURITY_CONTROL_MAP.get(rule_name, RULE_TO_CLAUSE.get(rule_name, "N/A"))
+
                 violations.append({
                     "rule": rule_name,
                     "resource_id": resource_id,
                     "clause": clause,
+                    "tier": tier,
                     "compliant": False,
                 })
 

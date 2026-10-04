@@ -21,8 +21,8 @@ def test_classify_low_severity():
 
 def test_classify_violations():
     violations = [
-        {"rule": "public_storage", "resource_id": "bucket-1", "clause": "GDPR Art 32"},
-        {"rule": "encryption_at_rest", "resource_id": "bucket-2", "clause": "HIPAA 164.312"},
+        {"rule": "public_storage", "resource_id": "bucket-1", "clause": "DPDP Act 2023 Sec. 8(5)"},
+        {"rule": "encryption_at_rest", "resource_id": "bucket-2", "clause": "CIS AWS Foundations Benchmark"},
         {"rule": "unknown_rule", "resource_id": "res-3", "clause": "N/A"},
     ]
     classified = classify_violations(violations)
@@ -35,7 +35,7 @@ def test_classify_violations():
 def test_lambda_handler():
     event = {
         "violations": [
-            {"rule": "public_storage", "resource_id": "bucket-pub", "clause": "GDPR Art 32"}
+            {"rule": "public_storage", "resource_id": "bucket-pub", "clause": "DPDP Act 2023 Sec. 8(5)"}
         ]
     }
     res = lambda_handler(event, None)

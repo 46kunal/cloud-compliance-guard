@@ -11,7 +11,7 @@ in one browser tab, the dashboard in another, and a terminal.
 
 ## 1. The problem (30 s)
 "Cloud breaches are mostly misconfigurations — public buckets, admin-wildcard IAM policies,
-users without MFA. PolicyGuard finds them, ranks them against GDPR / PCI-DSS, fixes the safe ones,
+users without MFA. PolicyGuard finds them, ranks them against DPDP Act 2023 (privacy tier) and CIS AWS Foundations Benchmark (security tier), fixes the safe ones,
 and keeps a tamper-evident record of everything it did."
 
 ## 2. Show the misconfigurations in the AWS console (1 min)
@@ -25,7 +25,7 @@ python demo/simulate_violation.py --save
 ```
 The first line prints the AWS account ID and identity being scanned. Walk through:
 - **[DETECT]** — rules are plain Python files in `lambdas/rule_engine/rules/` (policy-as-code). Adding a rule = adding a file.
-- **[CLASSIFY]** — severity + the regulation clause broken (e.g. PCI-DSS Req 7).
+- **[CLASSIFY]** — severity + the regulation clause broken (e.g. DPDP Act 2023 Sec. 8(5) or CIS AWS Benchmark 4.1).
 - **[REMEDIATE]** — DRY-RUN by default. Live fixes need *both* `POLICYGUARD_DRY_RUN=false` *and* the resource in the allowlist. MFA → manual review.
 - **[AUDIT]** — every event is SHA-256 hash-chained to the previous one, starting from `GENESIS`.
 

@@ -1,8 +1,19 @@
-# framework_mapping.py
-
-RULE_TO_CLAUSE = {
-    "public_storage": "GDPR Article 32 — Security of Processing",
-    "encryption_at_rest": "PCI-DSS Requirement 3 — Protect Stored Account Data",
-    "wildcard_permission": "PCI-DSS Requirement 7 — Restrict Access by Business Need to Know",
-    "mfa_required": "PCI-DSS Requirement 8.4 — Multi-Factor Authentication",
+PRIVACY_CLAUSE_MAP = {
+    "public_storage": "DPDP Act 2023 Sec. 8(5) — Reasonable Security Safeguards (also GDPR Art. 32)",
+    "encryption_at_rest": "DPDP Act 2023 Sec. 8(5) — Reasonable Security Safeguards (also GDPR Art. 32)",
+    "mfa_required": "DPDP Act 2023 Sec. 8(5) — Access Control Safeguard",
+    "open_admin_ports": "DPDP Act 2023 Sec. 8(5) — Reasonable Security Safeguards (Network Exposure)",
+    "iam_wildcard_policy": "DPDP Act 2023 Sec. 8(5) — Access Control Safeguard",
+    "wildcard_permission": "DPDP Act 2023 Sec. 8(5) — Access Control Safeguard",
 }
+
+SECURITY_CONTROL_MAP = {
+    "public_storage": "CIS AWS Foundations Benchmark — Restrict Public Access to Storage",
+    "encryption_at_rest": "CIS AWS Foundations Benchmark — Storage Encryption at Rest",
+    "mfa_required": "CIS AWS Foundations Benchmark 1.13/1.14 — Multi-Factor Authentication",
+    "open_admin_ports": "CIS AWS Foundations Benchmark 4.1/4.2 — Restrict Admin Ports (SSH/RDP)",
+    "iam_wildcard_policy": "CIS AWS Foundations Benchmark — IAM Least Privilege",
+    "wildcard_permission": "CIS AWS Foundations Benchmark — IAM Least Privilege",
+}
+
+RULE_TO_CLAUSE = SECURITY_CONTROL_MAP

@@ -9,7 +9,7 @@
 PolicyGuard provides an end-to-end security posture management workflow for cloud infrastructure:
 
 * **Continuous Auditing**: Scans AWS resources (S3, IAM, EC2, KMS) for security misconfigurations such as public S3 buckets, over-permissioned IAM wildcard policies, missing encryption at rest, and un-enforced Multi-Factor Authentication (MFA).
-* **Framework Alignment**: Maps detected violations to established regulatory standards including **GDPR** and **PCI-DSS**.
+* **Framework Alignment**: Maps detected violations to a two-tier compliance framework combining **DPDP Act 2023** (Privacy Tier) and **CIS AWS Foundations Benchmark** (Security Hygiene Tier).
 * **Automated Remediation**: Safely corrects high-risk misconfigurations (e.g., closing public bucket access or revoking dangerous permissions) using configurable safety controls.
 * **Tamper-Evident Audit Trail**: Records every detection, risk score update, and remediation action in a cryptographic, hash-chained log with optional blockchain anchoring.
 * **Real-time Monitoring**: Visualizes compliance scores, active violations, and audit history via an interactive Flask dashboard.
@@ -151,10 +151,10 @@ python demo/simulate_violation.py
 
 ## 6. Compliance Frameworks Referenced
 
-PolicyGuard maps technical cloud violations directly to specific controls within international compliance standards:
+PolicyGuard maps technical cloud violations to a two-tier compliance framework model:
 
-* **GDPR Article 32 (Security of Processing)**: Requires technical measures to ensure security of processing (e.g., encryption of personal data, continuous confidentiality, and access controls).
-* **PCI-DSS Requirement 3 (Protect Stored Cardholder Data)**: Mandates robust encryption mechanisms for stored data and strict access constraints.
+* **Tier 1 — Privacy (DPDP Act 2023 Sec. 8(5) & GDPR Art. 32)**: Mandates reasonable security safeguards and access controls for resources tagged as processing personal data (`handles_personal_data=true`).
+* **Tier 2 — Security Hygiene (CIS AWS Foundations Benchmark)**: Industry-standard security benchmarks governing public access restrictions, encryption at rest, administrative port security, and IAM least privilege.
 
 > For a complete mapping of all PolicyGuard rules to regulatory controls, refer to [`docs/compliance_mapping.md`](file:///d:/policyguard-cc/policyguard/docs/compliance_mapping.md).
 
