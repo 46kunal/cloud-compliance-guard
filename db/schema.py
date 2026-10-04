@@ -84,6 +84,11 @@ def get_audit_log(conn) -> list:
     ]
 
 
+def get_last_scan_time(conn):
+    row = conn.execute("SELECT scanned_at FROM scans ORDER BY id DESC LIMIT 1").fetchone()
+    return row["scanned_at"] + " UTC" if row else None
+
+
 def get_resources_scanned(conn) -> int:
     row = conn.execute("SELECT resources_scanned FROM scans ORDER BY id DESC LIMIT 1").fetchone()
     return row["resources_scanned"] if row else 0

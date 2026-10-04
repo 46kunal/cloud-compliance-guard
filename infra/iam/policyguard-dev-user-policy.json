@@ -1,0 +1,60 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ScanReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListAllMyBuckets",
+        "s3:GetBucketPolicyStatus",
+        "s3:GetBucketPolicy",
+        "s3:GetBucketPublicAccessBlock",
+        "s3:GetEncryptionConfiguration",
+        "iam:ListPolicies",
+        "iam:GetPolicyVersion",
+        "iam:ListUsers",
+        "iam:GetLoginProfile",
+        "iam:ListMFADevices",
+        "iam:ListEntitiesForPolicy",
+        "cloudtrail:LookupEvents"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DemoBucketsOnly",
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:DeleteBucket",
+        "s3:PutBucketPolicy",
+        "s3:DeleteBucketPolicy",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:PutEncryptionConfiguration"
+      ],
+      "Resource": "arn:aws:s3:::policyguard-demo-*"
+    },
+    {
+      "Sid": "DemoIamOnly",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreatePolicy",
+        "iam:DeletePolicy",
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:DetachUserPolicy",
+        "iam:DetachGroupPolicy",
+        "iam:CreateUser",
+        "iam:DeleteUser",
+        "iam:CreateLoginProfile",
+        "iam:DeleteLoginProfile"
+      ],
+      "Resource": [
+        "arn:aws:iam::*:policy/policyguard-demo-*",
+        "arn:aws:iam::*:role/policyguard-demo-*",
+        "arn:aws:iam::*:user/policyguard-demo-*"
+      ]
+    }
+  ]
+}

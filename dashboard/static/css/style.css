@@ -47,6 +47,12 @@ td.mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; word-
 .badge.MEDIUM { background: var(--medium); }
 .badge.LOW { background: var(--low); }
 
+.scan-bar { margin: 16px 0 0; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.scan-bar button {
+  padding: 6px 14px; border: 0; border-radius: 6px; background: #1d2330; color: #fff; cursor: pointer;
+}
+.scan-bar button:disabled { opacity: 0.6; cursor: wait; }
+
 .ok { color: var(--low); }
 .bad { color: var(--high); }
 .muted { color: var(--muted); font-size: 13px; }

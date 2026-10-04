@@ -80,6 +80,30 @@ def test_collectors_detect_exactly_the_generated_misconfigurations(aws):
     assert Counter(v["rule"] for v in run_rule_engine(resources)) == expected
 
 
+def test_live_scanner_records_detected_and_resolved(aws, tmp_path):
+    from db.schema import connect, get_audit_log, get_violations
+    from dashboard.scanner import scan_and_save
+
+    s3 = boto3.client("s3")
+    s3.create_bucket(Bucket="live-demo-bucket")
+    s3.put_bucket_encryption(Bucket="live-demo-bucket", ServerSideEncryptionConfiguration={
+        "Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]})
+    s3.put_bucket_policy(Bucket="live-demo-bucket", Policy=json.dumps({"Version": "2012-10-17", "Statement": [{
+        "Effect": "Allow", "Principal": "*", "Action": "s3:GetObject",
+        "Resource": "arn:aws:s3:::live-demo-bucket/*"}]}))
+    conn = connect(str(tmp_path / "live.db"))
+
+    assert scan_and_save(conn)["new"] == 1                 # made public -> detected
+    assert scan_and_save(conn)["new"] == 0                 # unchanged -> no duplicate audit entries
+    s3.delete_bucket_policy(Bucket="live-demo-bucket")     # "fixed in the console"
+    result = scan_and_save(conn)
+
+    assert result["resolved"] == 1 and get_violations(conn) == []
+    chain = get_audit_log(conn)
+    assert [e["event_type"] for e in chain] == ["VIOLATION_DETECTED", "REMEDIATION", "VIOLATION_RESOLVED"]
+    assert verify_chain(chain)
+
+
 def test_full_pipeline_on_mocked_account(aws):
     _populate(random.Random(11))
     classified = classify_violations(run_rule_engine(get_all_resources()))

@@ -87,8 +87,7 @@ def get_normalized_s3_resources() -> list:
                 "tags": {},
             })
     except Exception as e:
-        # Gracefully handle missing credentials or API errors
-        pass
+        print(f"[DETECT] WARNING: S3 scan failed: {e}", file=sys.stderr)
 
     return resources
 
@@ -115,7 +114,7 @@ def get_normalized_iam_resources() -> list:
                     statements = document.get("Statement", [])
                     if isinstance(statements, dict):
                         statements = [statements]
-                except Exception:
+                except Exception as e:
                     statements = []
 
                 resources.append({
@@ -134,12 +133,12 @@ def get_normalized_iam_resources() -> list:
                 try:
                     iam_client.get_login_profile(UserName=user_name)
                     has_console_access = True
-                except Exception:
+                except Exception as e:
                     has_console_access = False
                 try:
                     mfa = iam_client.list_mfa_devices(UserName=user_name)
                     mfa_enabled = bool(mfa.get("MFADevices"))
-                except Exception:
+                except Exception as e:
                     mfa_enabled = False
 
                 resources.append({
@@ -153,9 +152,8 @@ def get_normalized_iam_resources() -> list:
                     "has_console_access": has_console_access,
                     "mfa_enabled": mfa_enabled,
                 })
-    except Exception:
-        # Gracefully handle missing credentials or API errors
-        pass
+    except Exception as e:
+        print(f"[DETECT] WARNING: IAM scan failed: {e}", file=sys.stderr)
 
     return resources
 

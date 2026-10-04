@@ -25,6 +25,11 @@ PREFIX = "policyguard-demo"
 POLICY_NAME = f"{PREFIX}-admin-wildcard"
 ROLE_NAME = f"{PREFIX}-role"
 USER_NAME = f"{PREFIX}-user"
+READONLY_POLICY_NAME = f"{PREFIX}-readonly"
+
+
+def _private_bucket(account: str) -> str:
+    return f"{PREFIX}-private-{account}"
 
 
 def _names():
@@ -63,6 +68,20 @@ def create():
     iam.create_login_profile(UserName=USER_NAME, Password=secrets.token_urlsafe(24) + "aA1!")
     print(f"[CREATE] IAM user without MFA   {USER_NAME}")
 
+    # Correctly configured resources, so the scan shows passing resources too
+    private = _private_bucket(account)
+    s3.create_bucket(Bucket=private, **kwargs)
+    s3.put_public_access_block(Bucket=private, PublicAccessBlockConfiguration={
+        "BlockPublicAcls": True, "IgnorePublicAcls": True,
+        "BlockPublicPolicy": True, "RestrictPublicBuckets": True})
+    s3.put_bucket_encryption(Bucket=private, ServerSideEncryptionConfiguration={
+        "Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]})
+    print(f"[CREATE] Compliant bucket       s3://{private}")
+    iam.create_policy(PolicyName=READONLY_POLICY_NAME, PolicyDocument=json.dumps({
+        "Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "s3:GetObject",
+                                                "Resource": f"arn:aws:s3:::{private}/*"}]}))
+    print(f"[CREATE] Least-privilege policy {READONLY_POLICY_NAME}")
+
     print()
     print("Allowlist these for a live remediation demo (lambdas/remediation/safety/allowlist.json):")
     print(json.dumps({"allowed_resource_ids": [bucket, policy_arn]}, indent=2))
@@ -88,6 +107,8 @@ def delete():
     _ignore_missing(iam.delete_policy, PolicyArn=policy_arn)
     _ignore_missing(iam.delete_login_profile, UserName=USER_NAME)
     _ignore_missing(iam.delete_user, UserName=USER_NAME)
+    _ignore_missing(s3.delete_bucket, Bucket=_private_bucket(account))
+    _ignore_missing(iam.delete_policy, PolicyArn=f"arn:aws:iam::{account}:policy/{READONLY_POLICY_NAME}")
     print("[DELETE] Demo resources removed.")
 
 
