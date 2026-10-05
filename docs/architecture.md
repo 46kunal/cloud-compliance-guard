@@ -26,10 +26,10 @@ chains all four stages in-process.
 
 | Component | Status | Notes |
 |---|---|---|
-| Resource collection | Implemented | S3: public policy status, Public Access Block, default encryption. IAM: customer-managed policies (default version statements), users (console login profile, MFA devices). |
-| Rules | Implemented (4) | `public_storage`, `encryption_at_rest`, `wildcard_permission`, `mfa_required`. |
-| Risk classifier | Implemented | HIGH: public_storage, wildcard_permission. MEDIUM: encryption_at_rest, mfa_required. |
-| Remediation | Implemented | `close_public_bucket`, `enforce_encryption`, `revoke_iam_permission` (detach). MFA → manual review. |
+| Resource collection | Implemented | S3: public policy status, Public Access Block, SSE-KMS default encryption, tags. IAM: customer-managed policies (default version statements), users (console login profile, MFA devices). EC2: security groups. CloudTrail: one account-level resource (active multi-region trail?). |
+| Rules | Implemented (6) | `public_storage`, `encryption_at_rest`, `wildcard_permission`, `mfa_required`, `open_admin_ports`, `cloudtrail_enabled`. |
+| Risk classifier | Implemented | HIGH: public_storage, wildcard_permission, open_admin_ports. MEDIUM: encryption_at_rest, mfa_required, cloudtrail_enabled. |
+| Remediation | Implemented | `close_public_bucket`, `enforce_encryption`, `revoke_iam_permission` (detach). MFA, open ports and CloudTrail → manual review. |
 | Safety | Implemented | `DRY_RUN` (env `POLICYGUARD_DRY_RUN`), `allowlist.json`, fails closed. |
 | Audit log | Implemented | Hash chain + `verify_chain`; DynamoDB write when `AUDIT_TABLE` is set. |
 | Blockchain anchor | Optional | `AuditAnchor.sol` + web3 call; no-op unless `WEB3_RPC_URL`, `ANCHOR_CONTRACT_ADDRESS`, `ANCHOR_PRIVATE_KEY` are set. |
@@ -50,4 +50,5 @@ chains all four stages in-process.
 
 - Compliance score = % of scanned resources with zero violations (not weighted by severity).
 - Lambdas are not chained by Step Functions/EventBridge; the local demo chains them in-process.
-- EC2/KMS collectors are not implemented (the rule contract supports adding them).
+- RDS, EBS and KMS-key-rotation collectors are not implemented (the rule contract supports adding them).
+- Security groups and CloudTrail are scanned in the configured region only.

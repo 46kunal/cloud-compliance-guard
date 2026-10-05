@@ -38,6 +38,19 @@ def _names():
     return account, region, f"{PREFIX}-public-{account}"
 
 
+def _step(failures: list, label: str, fn, **kwargs) -> bool:
+    """Run one AWS call. "Already exists" is fine; any other error is printed and recorded (never swallowed)."""
+    try:
+        fn(**kwargs)
+        return True
+    except Exception as e:
+        if "EntityAlreadyExists" in str(e):
+            return True
+        print(f"[CREATE] FAILED {label}: {e}")
+        failures.append(label)
+        return False
+
+
 def create():
     account, region, bucket = _names()
     s3, iam = boto3.client("s3", region_name=region), boto3.client("iam")
@@ -66,44 +79,31 @@ def create():
         print(f"[CREATE] Bucket s3://{bucket} created, but public policy was refused: {e}")
         print("         Account-level Block Public Access is on: S3 console > Block Public Access settings for this account.")
 
+    failures = []
+
     # Create wildcard IAM policy and role (Security tier)
     policy_arn = f"arn:aws:iam::{account}:policy/{POLICY_NAME}"
-    try:
-        policy_res = iam.create_policy(
-            PolicyName=POLICY_NAME,
-            PolicyDocument=json.dumps({"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}]}),
-            Tags=[{"Key": "handles_personal_data", "Value": "false"}]
-        )
-        policy_arn = policy_res["Policy"]["Arn"]
-    except Exception:
-        pass
-
-    try:
-        iam.create_role(
-            RoleName=ROLE_NAME,
-            AssumeRolePolicyDocument=json.dumps({"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "sts:AssumeRole", "Principal": {"AWS": f"arn:aws:iam::{account}:root"}}]}),
-            Tags=[{"Key": "handles_personal_data", "Value": "false"}]
-        )
-    except Exception:
-        pass
-
-    try:
-        iam.attach_role_policy(RoleName=ROLE_NAME, PolicyArn=policy_arn)
-    except Exception:
-        pass
-
-    print(f"[CREATE] Wildcard IAM policy    {policy_arn} (attached to role {ROLE_NAME})")
+    before = len(failures)
+    _step(failures, "wildcard IAM policy", iam.create_policy,
+          PolicyName=POLICY_NAME,
+          PolicyDocument=json.dumps({"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}]}),
+          Tags=[{"Key": "handles_personal_data", "Value": "false"}])
+    _step(failures, "IAM role", iam.create_role,
+          RoleName=ROLE_NAME,
+          AssumeRolePolicyDocument=json.dumps({"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "sts:AssumeRole", "Principal": {"AWS": f"arn:aws:iam::{account}:root"}}]}),
+          Tags=[{"Key": "handles_personal_data", "Value": "false"}])
+    _step(failures, "attach policy to role", iam.attach_role_policy, RoleName=ROLE_NAME, PolicyArn=policy_arn)
+    if len(failures) == before:
+        print(f"[CREATE] Wildcard IAM policy    {policy_arn} (attached to role {ROLE_NAME})")
 
     # Create user without MFA (Security tier)
-    try:
-        iam.create_user(UserName=USER_NAME, Tags=[{"Key": "handles_personal_data", "Value": "false"}])
-    except Exception:
-        pass
-    try:
-        iam.create_login_profile(UserName=USER_NAME, Password=secrets.token_urlsafe(24) + "aA1!")
-    except Exception:
-        pass
-    print(f"[CREATE] IAM user without MFA   {USER_NAME}")
+    before = len(failures)
+    _step(failures, "IAM user", iam.create_user,
+          UserName=USER_NAME, Tags=[{"Key": "handles_personal_data", "Value": "false"}])
+    _step(failures, "console login profile", iam.create_login_profile,
+          UserName=USER_NAME, Password=secrets.token_urlsafe(24) + "aA1!")
+    if len(failures) == before:
+        print(f"[CREATE] IAM user without MFA   {USER_NAME}")
 
     # Correctly configured resources (compliant private bucket tagged handles_personal_data=true)
     private = _private_bucket(account)
@@ -123,13 +123,19 @@ def create():
 
     print(f"[CREATE] Compliant bucket       s3://{private}")
 
-    try:
-        iam.create_policy(PolicyName=READONLY_POLICY_NAME, PolicyDocument=json.dumps({
-            "Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "s3:GetObject",
-                                                    "Resource": f"arn:aws:s3:::{private}/*"}]}))
-    except Exception:
-        pass
-    print(f"[CREATE] Least-privilege policy {READONLY_POLICY_NAME}")
+    before = len(failures)
+    _step(failures, "least-privilege policy", iam.create_policy,
+          PolicyName=READONLY_POLICY_NAME,
+          PolicyDocument=json.dumps({"Version": "2012-10-17", "Statement": [{
+              "Effect": "Allow", "Action": "s3:GetObject", "Resource": f"arn:aws:s3:::{private}/*"}]}))
+    if len(failures) == before:
+        print(f"[CREATE] Least-privilege policy {READONLY_POLICY_NAME}")
+
+    if failures:
+        print()
+        print(f"[CREATE] INCOMPLETE: {len(failures)} step(s) failed ({', '.join(failures)}).")
+        print("         Usually a missing IAM permission: re-paste infra/iam/policyguard-dev-user-policy.json into the user's inline policy.")
+        sys.exit(1)
 
     print()
     print("Allowlist these for a live remediation demo (lambdas/remediation/safety/allowlist.json):")
@@ -149,16 +155,30 @@ def delete():
     s3, iam = boto3.client("s3", region_name=region), boto3.client("iam")
     policy_arn = f"arn:aws:iam::{account}:policy/{POLICY_NAME}"
 
-    _ignore_missing(s3.delete_bucket_policy, Bucket=bucket)
-    _ignore_missing(s3.delete_bucket_tagging, Bucket=bucket)
-    _ignore_missing(s3.delete_bucket, Bucket=bucket)
+    # Sweep every bucket with the demo prefix (also leftovers from earlier demo scripts), emptying each first
+    s3_resource = boto3.resource("s3", region_name=region)
+    for entry in s3.list_buckets().get("Buckets", []):
+        name = entry["Name"]
+        if not name.startswith(f"{PREFIX}-"):
+            continue
+        demo_bucket = s3_resource.Bucket(name)
+        _ignore_missing(demo_bucket.object_versions.delete)
+        _ignore_missing(demo_bucket.objects.delete)
+        _ignore_missing(s3.delete_bucket_policy, Bucket=name)
+        _ignore_missing(s3.delete_bucket_tagging, Bucket=name)
+        _ignore_missing(s3.delete_bucket, Bucket=name)
+        print(f"[DELETE] bucket {name}")
+
+    leftover_groups = boto3.client("ec2", region_name=region).describe_security_groups(
+        Filters=[{"Name": "group-name", "Values": [f"{PREFIX}*"]}]).get("SecurityGroups", [])
+    for group in leftover_groups:
+        print(f"[DELETE] NOTE: security group {group['GroupId']} ({group['GroupName']}) must be deleted manually in the EC2 console")
+
     _ignore_missing(iam.detach_role_policy, RoleName=ROLE_NAME, PolicyArn=policy_arn)
     _ignore_missing(iam.delete_role, RoleName=ROLE_NAME)
     _ignore_missing(iam.delete_policy, PolicyArn=policy_arn)
     _ignore_missing(iam.delete_login_profile, UserName=USER_NAME)
     _ignore_missing(iam.delete_user, UserName=USER_NAME)
-    _ignore_missing(s3.delete_bucket_tagging, Bucket=_private_bucket(account))
-    _ignore_missing(s3.delete_bucket, Bucket=_private_bucket(account))
     _ignore_missing(iam.delete_policy, PolicyArn=f"arn:aws:iam::{account}:policy/{READONLY_POLICY_NAME}")
     print("[DELETE] Demo resources removed.")
 

@@ -22,8 +22,8 @@ All resources are prefixed `policyguard-demo` and are visible in the S3 and IAM 
 The bucket is empty; the user has a random password nobody knows; the wildcard policy is only on
 a role assumable from inside this account. Remove everything with `python infra/demo_resources.py delete`.
 
-Note: since Jan 2023 every S3 bucket is encrypted (SSE-S3) by default, so `encryption_at_rest`
-will normally report 0 on a real account — that is the correct result.
+Note: AWS encrypts new buckets with SSE-S3 by default, but the `encryption_at_rest` rule requires SSE-KMS,
+so any bucket on the default setting is reported. The auto-fix applies SSE-KMS.
 
 ## 3. Run the pipeline against the account
 
@@ -56,7 +56,7 @@ POLICYGUARD_DRY_RUN=false python demo/simulate_violation.py --save    # bash
 ```
 
 Then re-run `python demo/simulate_violation.py` — the public bucket violation is gone.
-Actions: `close_public_bucket` (enables Public Access Block), `enforce_encryption` (AES256 default),
+Actions: `close_public_bucket` (enables Public Access Block), `enforce_encryption` (SSE-KMS default),
 `revoke_iam_permission` (detaches the policy from all users/groups/roles; the policy is kept).
 `mfa_required` is never auto-fixed (needs a human device) — reported as manual review.
 
@@ -115,3 +115,5 @@ aws configservice put-config-rule --config-rule file://build/config-rule.json
 ```bash
 python infra/demo_resources.py delete
 ```
+
+`delete` removes every S3 bucket whose name starts with `policyguard-demo-` (emptying it first), so leftovers from earlier demo runs are cleaned too. Security groups named `policyguard-demo*` are only listed; delete them in the EC2 console.

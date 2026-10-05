@@ -32,8 +32,9 @@ The first line prints the AWS account ID and identity being scanned. Walk throug
 ## 4. Show the scan's activity in the AWS console — CloudTrail (45 s)
 **CloudTrail → Event history**, filter *User name* = the IAM user/role you ran the scan as
 (events appear within ~5 min). You will see PolicyGuard's real API calls:
-`ListBuckets`, `GetBucketPolicyStatus`, `GetBucketEncryption`, `ListPolicies`, `GetPolicyVersion`,
-`ListUsers`, `GetLoginProfile`, `ListMFADevices`. Read-only — the dry run changed nothing.
+`ListBuckets`, `GetBucketPolicyStatus`, `GetBucketEncryption`, `GetBucketTagging`, `ListPolicies`,
+`GetPolicyVersion`, `ListUsers`, `GetLoginProfile`, `ListMFADevices`, `DescribeSecurityGroups`,
+`DescribeTrails`, `GetTrailStatus`. Read-only — the dry run changed nothing.
 
 ## 5. Dashboard (1 min)
 ```bash
@@ -66,5 +67,6 @@ python infra/demo_resources.py delete
 - *Is this real data?* — Yes: the first line of the scan prints the AWS account ID; every call is visible in CloudTrail. The test-suite uses moto (in-memory AWS) only for automated tests.
 - *Why not just AWS Config managed rules?* — We add regulation mapping, gated auto-remediation, and a tamper-evident log; the rule engine also runs as a Config custom rule (`infra/config/config-rules.json`).
 - *What stops remediation from breaking prod?* — Dry-run default + explicit allowlist, fail-closed if the allowlist is missing; IAM fix only detaches (reversible).
-- *Why does encryption_at_rest show 0?* — AWS encrypts all new buckets by default since 2023; the rule still checks it, the account is simply compliant.
+- *Why is every bucket flagged for encryption?* — AWS encrypts new buckets with SSE-S3 by default, but our rule requires SSE-KMS (customer-auditable keys). Auto-remediation switches the bucket to SSE-KMS.
+- *Why is there a CloudTrail finding?* — CIS 3.1 needs an active multi-region trail; Event history alone doesn't count. It is manual-fix only.
 - *Is the blockchain required?* — No. The hash chain alone gives tamper evidence; anchoring is optional.
