@@ -1,6 +1,6 @@
 """
 Action: enforce_encryption
-Sets default SSE-S3 (AES256) server-side encryption on the bucket.
+Sets default SSE-KMS (aws:kms) server-side encryption on the bucket.
 """
 import boto3
 
@@ -25,7 +25,7 @@ def remediate(resource_id: str, dry_run: bool = True) -> dict:
     result = {"action": ACTION, "resource_id": resource_id, "dry_run": dry_run, "success": False}
 
     if dry_run:
-        result.update(success=True, message=f"Would enable AES256 default encryption on s3://{resource_id}")
+        result.update(success=True, message=f"Would enable SSE-KMS default encryption on s3://{resource_id}")
         return result
     if not is_remediation_allowed(resource_id):
         result["message"] = "Skipped: resource not in allowlist"
@@ -35,10 +35,11 @@ def remediate(resource_id: str, dry_run: bool = True) -> dict:
         boto3.client("s3").put_bucket_encryption(
             Bucket=resource_id,
             ServerSideEncryptionConfiguration={
-                "Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]
+                # SSE-KMS (AWS-managed aws/s3 key): the scanner only accepts aws:kms, so AES256 would stay flagged
+                "Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "aws:kms"}}]
             },
         )
-        result.update(success=True, message=f"AES256 default encryption enabled on s3://{resource_id}")
+        result.update(success=True, message=f"SSE-KMS default encryption enabled on s3://{resource_id}")
     except Exception as e:
         result["message"] = f"Error: {e}"
     return result

@@ -5,6 +5,7 @@ PRIVACY_CLAUSE_MAP = {
     "open_admin_ports": "DPDP Act 2023 Sec. 8(5) — Reasonable Security Safeguards (Network Exposure)",
     "iam_wildcard_policy": "DPDP Act 2023 Sec. 8(5) — Access Control Safeguard",
     "wildcard_permission": "DPDP Act 2023 Sec. 8(5) — Access Control Safeguard",
+    "cloudtrail_enabled": "DPDP Act 2023 Sec. 8(5) — Reasonable Security Safeguards (Audit Logging)",
 }
 
 SECURITY_CONTROL_MAP = {
@@ -14,6 +15,7 @@ SECURITY_CONTROL_MAP = {
     "open_admin_ports": "CIS AWS Foundations Benchmark 4.1/4.2 — Restrict Admin Ports (SSH/RDP)",
     "iam_wildcard_policy": "CIS AWS Foundations Benchmark — IAM Least Privilege",
     "wildcard_permission": "CIS AWS Foundations Benchmark — IAM Least Privilege",
+    "cloudtrail_enabled": "CIS AWS Foundations Benchmark 3.1 — CloudTrail Enabled in All Regions",
 }
 
 RULE_TO_CLAUSE = SECURITY_CONTROL_MAP

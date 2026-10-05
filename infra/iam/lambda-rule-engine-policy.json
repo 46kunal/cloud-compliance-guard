@@ -25,6 +25,18 @@
       "Resource": "*"
     },
     {
+      "Sid": "ReadTagsEc2CloudTrail",
+      "Effect": "Allow",
+      "Action": [
+        "cloudtrail:DescribeTrails",
+        "cloudtrail:GetTrailStatus",
+        "ec2:DescribeSecurityGroups",
+        "s3:GetBucketPolicy",
+        "s3:GetBucketTagging"
+      ],
+      "Resource": "*"
+    },
+    {
       "Sid": "ReportToConfig",
       "Effect": "Allow",
       "Action": "config:PutEvaluations",
@@ -33,7 +45,11 @@
     {
       "Sid": "Logs",
       "Effect": "Allow",
-      "Action": ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"],
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
       "Resource": "arn:aws:logs:*:*:*"
     }
   ]

@@ -227,9 +227,50 @@ def get_normalized_ec2_resources() -> list:
     return resources
 
 
+def get_normalized_cloudtrail_resources() -> list:
+    """
+    Returns ONE account-level resource (resource_type "cloudtrail_config") saying whether an
+    active multi-region CloudTrail trail exists (CIS 3.1). Returns [] on API errors, so missing
+    permissions are reported as a scan warning and never as a false "no CloudTrail" finding.
+    """
+    try:
+        region = boto3.session.Session().region_name or "us-east-1"
+        trails = boto3.client("cloudtrail", region_name=region).describe_trails().get("trailList", [])
+
+        active = False
+        for trail in trails:
+            if not trail.get("IsMultiRegionTrail"):
+                continue
+            # A trail's status must be read from its home region
+            home = boto3.client("cloudtrail", region_name=trail.get("HomeRegion", region))
+            if home.get_trail_status(Name=trail["TrailARN"]).get("IsLogging"):
+                active = True
+                break
+
+        return [{
+            "resource_type": "cloudtrail_config",
+            "provider": "aws",
+            "resource_id": "cloudtrail:account-wide",
+            "is_public": False,
+            "encrypted": True,
+            "permissions": [],
+            "tags": {},
+            "trail_count": len(trails),
+            "active_multi_region_trail": active,
+        }]
+    except Exception as e:
+        print(f"[DETECT] WARNING: CloudTrail scan failed: {e}", file=sys.stderr)
+        return []
+
+
 def get_all_resources() -> list:
     """Merges every resource collector's output."""
-    return get_normalized_s3_resources() + get_normalized_iam_resources() + get_normalized_ec2_resources()
+    return (
+        get_normalized_s3_resources()
+        + get_normalized_iam_resources()
+        + get_normalized_ec2_resources()
+        + get_normalized_cloudtrail_resources()
+    )
 
 
 def _get_rule_modules():

@@ -27,9 +27,21 @@ def aws(monkeypatch):
         yield
 
 
+def _add_compliant_cloudtrail() -> None:
+    """A mocked account has no trail, which the cloudtrail_enabled rule rightly flags; add a good one."""
+    s3 = boto3.client("s3")
+    s3.create_bucket(Bucket="trail-logs-bucket")
+    s3.put_bucket_encryption(Bucket="trail-logs-bucket", ServerSideEncryptionConfiguration={
+        "Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "aws:kms"}}]})
+    ct = boto3.client("cloudtrail")
+    ct.create_trail(Name="main-trail", S3BucketName="trail-logs-bucket", IsMultiRegionTrail=True)
+    ct.start_logging(Name="main-trail")
+
+
 def _populate(rng, n_buckets=40, n_policies=20, n_users=30) -> Counter:
     expected = Counter()
     s3, iam = boto3.client("s3"), boto3.client("iam")
+    _add_compliant_cloudtrail()
 
     for i in range(n_buckets):
         name = f"test-bucket-{i:04d}"
@@ -46,7 +58,7 @@ def _populate(rng, n_buckets=40, n_policies=20, n_users=30) -> Counter:
         expected["public_storage"] += public and not blocked
         if rng.random() < 0.7:
             s3.put_bucket_encryption(Bucket=name, ServerSideEncryptionConfiguration={
-                "Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]})
+                "Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "aws:kms"}}]})
         else:
             expected["encryption_at_rest"] += 1
 
@@ -76,7 +88,12 @@ def _populate(rng, n_buckets=40, n_policies=20, n_users=30) -> Counter:
 def test_collectors_detect_exactly_the_generated_misconfigurations(aws):
     expected = _populate(random.Random(7))
     resources = get_all_resources()
-    assert len(resources) == 40 + 20 + 30
+    # Exclude resources that are not generated: moto's default VPC security group, the CloudTrail
+    # account resource, and the trail's own log bucket
+    generated = [r for r in resources
+                 if r["resource_type"] not in ("security_group", "cloudtrail_config")
+                 and r["resource_id"] != "trail-logs-bucket"]
+    assert len(generated) == 40 + 20 + 30
     assert Counter(v["rule"] for v in run_rule_engine(resources)) == expected
 
 
@@ -84,10 +101,11 @@ def test_live_scanner_records_detected_and_resolved(aws, tmp_path):
     from db.schema import connect, get_audit_log, get_violations
     from dashboard.scanner import scan_and_save
 
+    _add_compliant_cloudtrail()
     s3 = boto3.client("s3")
     s3.create_bucket(Bucket="live-demo-bucket")
     s3.put_bucket_encryption(Bucket="live-demo-bucket", ServerSideEncryptionConfiguration={
-        "Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]})
+        "Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "aws:kms"}}]})
     s3.put_bucket_policy(Bucket="live-demo-bucket", Policy=json.dumps({"Version": "2012-10-17", "Statement": [{
         "Effect": "Allow", "Principal": "*", "Action": "s3:GetObject",
         "Resource": "arn:aws:s3:::live-demo-bucket/*"}]}))

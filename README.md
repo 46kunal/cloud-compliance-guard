@@ -1,172 +1,143 @@
 # PolicyGuard — Automated Cloud Compliance & Governance Auditing Platform
 
-**PolicyGuard** is an automated cloud security and governance platform designed to continuously audit AWS environments for compliance violations, calculate real-time risk scores mapped to regulatory frameworks, auto-remediate critical misconfigurations, and maintain a tamper-evident audit log.
+**PolicyGuard** scans an AWS account for security misconfigurations, decides for each one whether it is a *privacy* problem (cited under India's DPDP Act 2023) or a *security hygiene* problem (cited under the CIS AWS Foundations Benchmark), shows everything on a live dashboard, can safely auto-fix the riskiest issues, and records every event in a tamper-evident hash-chained audit log.
+
+> Student project for **Advanced Cloud Computing**. Intended for sandbox AWS accounts only — see [Known Limitations](#8-known-limitations).
 
 ---
 
-## 1. Project Overview
+## 1. What it does
 
-PolicyGuard provides an end-to-end security posture management workflow for cloud infrastructure:
+| Stage | What happens | Where |
+| :--- | :--- | :--- |
+| **Detect** | Collects S3 buckets, IAM policies/users, EC2 security groups and the CloudTrail setup via `boto3`, then runs every rule module in `lambdas/rule_engine/rules/` | `lambdas/rule_engine/` |
+| **Classify** | Picks the tier from the resource's `handles_personal_data` tag, attaches the DPDP or CIS clause, assigns a severity | `lambdas/tier_classifier.py`, `lambdas/risk_classifier/` |
+| **Remediate** | Fixes a few issues automatically — dry-run by default and only for allowlisted resources | `lambdas/remediation/` |
+| **Audit** | Appends each event to a SHA-256 hash chain; `verify_chain()` detects any edit | `lambdas/audit_logger/` |
+| **Visualize** | Flask dashboard that re-scans the account every 20 s | `dashboard/`, `db/` |
 
-* **Continuous Auditing**: Scans AWS resources (S3, IAM, EC2, KMS) for security misconfigurations such as public S3 buckets, over-permissioned IAM wildcard policies, missing encryption at rest, and un-enforced Multi-Factor Authentication (MFA).
-* **Framework Alignment**: Maps detected violations to a two-tier compliance framework combining **DPDP Act 2023** (Privacy Tier) and **CIS AWS Foundations Benchmark** (Security Hygiene Tier).
-* **Automated Remediation**: Safely corrects high-risk misconfigurations (e.g., closing public bucket access or revoking dangerous permissions) using configurable safety controls.
-* **Tamper-Evident Audit Trail**: Records every detection, risk score update, and remediation action in a cryptographic, hash-chained log with optional blockchain anchoring.
-* **Real-time Monitoring**: Visualizes compliance scores, active violations, and audit history via an interactive Flask dashboard.
+### Rules
+
+| Rule | Detects | Severity | Auto-fix |
+| :--- | :--- | :--- | :--- |
+| `public_storage` | S3 bucket readable by anyone | HIGH | Enable Block Public Access |
+| `wildcard_permission` | IAM policy allowing `*` on `*` | HIGH | Detach policy from users/groups/roles |
+| `open_admin_ports` | Security group open to the internet on 22/3389 | HIGH | Manual review |
+| `encryption_at_rest` | S3 bucket without SSE-KMS default encryption | MEDIUM | Enable SSE-KMS |
+| `mfa_required` | IAM user with console password and no MFA | MEDIUM | Manual review |
+| `cloudtrail_enabled` | No active multi-region CloudTrail trail | MEDIUM | Manual review |
+
+Full rule-to-clause table: [`docs/compliance_mapping.md`](docs/compliance_mapping.md).
 
 ---
 
 ## 2. Architecture
 
-The PolicyGuard pipeline follows a event-driven serverless architecture:
-
 ```text
-[ AWS Resources ] (EC2, S3, IAM, KMS)
-        │
+AWS account (S3, IAM, EC2, CloudTrail)
+        │  boto3 (read-only scan)
         ▼
-[ AWS Config & CloudTrail ] (Continuous Monitoring & Event Capture)
-        │
-        ▼
-[ Lambda Rule Engine ] (Policy-as-Code Rule Evaluation)
-        │
-        ▼
-[ Risk Classifier ] (Severity Scoring & Regulatory Mapping)
-        │
-        ├──────────────────────────────────────┐
-        ▼                                      ▼
-[ Auto-Remediation Lambda ]          [ Audit Logger Lambda ]
-(Executes Fixes via Allowlist)       (Cryptographic Hash-Chained Log)
-        │                                      │
-        └──────────────────┬───────────────────┘
-                           ▼
-             [ Compliance Dashboard ]
-             (Flask UI, Live Metrics & Audit Trail)
+ Rule Engine ──► Risk Classifier ──┬──► Remediation (dry-run + allowlist)
+                                   │
+                                   └──► Audit Logger (SHA-256 hash chain)
+                                              │
+                                              ▼
+                              SQLite ──► Flask dashboard (live re-scan every 20 s)
 ```
 
-1. **Continuous Monitoring**: AWS Config and CloudTrail capture configuration changes across monitored AWS resources.
-2. **Rule Engine**: AWS Config triggers the `rule_engine` Lambda function to execute policy-as-code checks.
-3. **Risk Classification**: The `risk_classifier` Lambda evaluates severity, assigns risk scores, and tags violations with regulatory references.
-4. **Dual Pipeline Execution**:
-   * **Auto-Remediation**: Triggers automated corrective actions for allowed high-severity misconfigurations.
-   * **Audit Logging**: Appends an entry into a cryptographic hash-chained audit log stored in DynamoDB (and optionally anchored to a blockchain contract).
-5. **Visualization**: The Flask web application renders real-time compliance metrics, active violation alerts, and the immutable audit log.
+Every `lambdas/*/handler.py` has two entry points: `lambda_handler(event, context)` for AWS Lambda and a `__main__` block for running that stage from the command line. The dashboard's background scanner and `demo/simulate_violation.py` chain the stages **in-process**; the Lambdas are deployable (see `infra/setup_notes.md`) but are not wired together with EventBridge/Step Functions.
+
+More detail: [`docs/architecture.md`](docs/architecture.md).
 
 ---
 
-## 3. Folder Structure
+## 3. Folder structure
 
 ```text
-policyguard/
-├── README.md                          # Project documentation and setup guide
-├── .gitignore                         # Git exclusion rules for Python, AWS, and Node.js
-├── requirements.txt                   # Python package dependencies
-├── infra/                             # AWS IAM policies, Config rules, and infra notes
-├── lambdas/                           # Serverless Python functions for scanning, scoring, remediation, & logging
-├── dashboard/                         # Flask-based web application for compliance visualizer
-├── db/                                # Database schemas and seed scripts
-├── blockchain/                        # Smart contracts and Hardhat scripts for audit anchoring
-├── tests/                             # Unit and integration test suite
-├── demo/                              # Violation simulation scripts and demo walkthroughs
-└── docs/                              # Architecture specs, compliance mappings, and reports
+├── lambdas/      rule_engine, risk_classifier, remediation, audit_logger, tier_classifier.py
+├── dashboard/    Flask app, live scanner, templates, static files
+├── db/           SQLite schema and helpers
+├── demo/         simulate_violation.py (end-to-end run) and demo_script.md (presenter notes)
+├── infra/        demo_resources.py (create/delete test resources), IAM policy JSONs, Config rule, setup notes
+├── blockchain/   AuditAnchor.sol and Hardhat scripts (optional, see Known Limitations)
+├── tests/        pytest suite (moto mocks AWS in memory)
+└── docs/         architecture and compliance mapping
 ```
 
-* **[infra/](file:///d:/policyguard-cc/infra)**: AWS IAM policy JSON files, AWS Config rule definitions, and setup notes.
-* **[lambdas/](file:///d:/policyguard-cc/lambdas)**: Core serverless Python functions (`rule_engine`, `risk_classifier`, `remediation`, `audit_logger`).
-* **[dashboard/](file:///d:/policyguard-cc/dashboard)**: Flask web dashboard routes, HTML templates, CSS, and JavaScript interface files.
-* **[db/](file:///d:/policyguard-cc/db)**: Database schemas and sample data generation scripts.
-* **[blockchain/](file:///d:/policyguard-cc/blockchain)**: Solidity contracts (`AuditAnchor.sol`) and Hardhat deployment scripts.
-* **[tests/](file:///d:/policyguard-cc/tests)**: Pytest test suite covering rule evaluations, risk scoring, remediation safety, and audit logs.
-* **[demo/](file:///d:/policyguard-cc/demo)**: Violation simulation script (`simulate_violation.py`) and step-by-step demonstration notes.
-* **[docs/](file:///d:/policyguard-cc/docs)**: Extended architectural documentation and regulatory compliance matrix.
+---
+
+## 4. Tech stack
+
+| Component | Technology |
+| :--- | :--- |
+| Cloud | AWS S3, IAM, EC2 (security groups), CloudTrail — read via `boto3` |
+| Backend | Python 3.10+, Flask, SQLite |
+| Frontend | HTML, CSS, vanilla JavaScript |
+| Testing | pytest, moto (in-memory AWS) |
+| Optional / not deployed | AWS Lambda, AWS Config custom rule, DynamoDB audit table, Solidity + web3.py anchoring |
 
 ---
 
-## 4. Tech Stack
-
-| Component | Technology | Description |
-| :--- | :--- | :--- |
-| **Cloud Services** | AWS Config, CloudTrail | Infrastructure monitoring & event capture |
-| **Identity & Access** | AWS IAM, IAM Access Analyzer | Access evaluation & permission auditing |
-| **Security & Encryption** | AWS KMS, AWS Security Hub | Encryption key management & security posture |
-| **Compute & Orchestration** | AWS Lambda, EventBridge | Event-driven serverless pipeline execution |
-| **Database** | Amazon DynamoDB | NoSQL storage for state, rules, and audit logs |
-| **Backend & Web App** | Python 3.x, Flask | Rule engine logic and web management UI |
-| **Frontend** | HTML5, Vanilla CSS, JavaScript | Interactive compliance dashboard |
-| **Testing** | Pytest | Automated test runner |
-| **Blockchain (Optional)**| Solidity, Hardhat, Web3.py | Immutable audit anchoring smart contracts |
-
----
-
-## 5. Setup Instructions
+## 5. Setup
 
 ### Prerequisites
-* Python 3.10+ installed
-* AWS CLI configured with active credentials (`aws configure`)
-* Node.js & npm (optional, required only for blockchain anchoring)
+* Python 3.10+
+* AWS CLI configured for a **sandbox** account (`aws configure`) — see `infra/iam/policyguard-dev-user-policy.json` for the permissions the scan needs
 
-### Step 1: Clone and Install Dependencies
+### Install and test
 ```bash
-git clone https://github.com/your-repo/policyguard.git
-cd policyguard
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+git clone https://github.com/46kunal/cloud-compliance-guard.git
+cd cloud-compliance-guard
 pip install -r requirements.txt
+python -m pytest tests/ -q
 ```
 
-### Step 2: Deploy Lambda Functions
-Deploy the serverless packages from the `lambdas/` directory to AWS Lambda:
+### Run the demo against a real account
 ```bash
-# Example AWS CLI deployment for rule engine
-aws lambda create-function \
-  --function-name PolicyGuard-RuleEngine \
-  --runtime python3.11 \
-  --handler lambdas.rule_engine.handler.lambda_handler \
-  --role arn:aws:iam::123456789012:role/PolicyGuardLambdaRole \
-  --zip-file fileb://lambdas/rule_engine.zip
+python infra/demo_resources.py create      # creates clearly-named test resources (policyguard-demo-*)
+python demo/simulate_violation.py --save   # scan: [DETECT] [CLASSIFY] [REMEDIATE] [AUDIT]
+python dashboard/app.py                    # http://127.0.0.1:5000 (re-scans every 20 s)
+python infra/demo_resources.py delete      # clean up
 ```
 
-### Step 3: Register AWS Config Custom Rules
-Link the `rule_engine` Lambda function to AWS Config using the JSON definition in `infra/config/config-rules.json`:
-```bash
-aws configservice put-config-rule --config-rule file://infra/config/config-rules.json
-```
-
-### Step 4: Configure EventBridge Pipeline Triggers
-Set up AWS EventBridge rules to link AWS Config compliance evaluation events to the `risk_classifier`, `remediation`, and `audit_logger` Lambda handlers.
-
-### Step 5: Launch Local Compliance Dashboard
-Start the Flask web dashboard locally:
-```bash
-python dashboard/app.py
-```
-Open your browser and navigate to `http://127.0.0.1:5000`.
-
-### Step 6: Execute Violation Simulation Demo
-To verify the auditing pipeline, run the simulation script to trigger a test compliance violation:
-```bash
-python demo/simulate_violation.py
-```
+Step-by-step presenter notes: [`demo/demo_script.md`](demo/demo_script.md). Lambda/Config deployment and live-remediation steps: [`infra/setup_notes.md`](infra/setup_notes.md).
 
 ---
 
-## 6. Compliance Frameworks Referenced
+## 6. Compliance frameworks
 
-PolicyGuard maps technical cloud violations to a two-tier compliance framework model:
+* **Tier 1 — Privacy (DPDP Act 2023 Sec. 8(5), also GDPR Art. 32).** Applied to resources tagged `handles_personal_data=true` (or `data-type=user-records`). Sec. 8(5) requires "reasonable security safeguards"; PolicyGuard *interprets* that as a set of technical controls (no public exposure, encryption, access control, network exposure, audit logging).
+* **Tier 2 — Security Hygiene (CIS AWS Foundations Benchmark).** Applied to everything else.
 
-* **Tier 1 — Privacy (DPDP Act 2023 Sec. 8(5) & GDPR Art. 32)**: Mandates reasonable security safeguards and access controls for resources tagged as processing personal data (`handles_personal_data=true`).
-* **Tier 2 — Security Hygiene (CIS AWS Foundations Benchmark)**: Industry-standard security benchmarks governing public access restrictions, encryption at rest, administrative port security, and IAM least privilege.
-
-> For a complete mapping of all PolicyGuard rules to regulatory controls, refer to [`docs/compliance_mapping.md`](file:///d:/policyguard-cc/docs/compliance_mapping.md).
+Each finding gets exactly one citation from exactly one tier, chosen at scan time by the resource's tag. Untagged resources default to Tier 2.
 
 ---
 
-## 7. Safety Notes
+## 7. Safety
 
-* **Safety Controls**: The auto-remediation module includes an explicit **dry-run mode** (`lambdas/remediation/safety/dry_run.py`) and an **allowlist configuration** (`lambdas/remediation/safety/allowlist.json`) to prevent unintended modification of critical production resources.
-* **Scope Isolation**: All automated testing and violation simulations must be executed exclusively within dedicated sandbox AWS accounts and owned test resources.
+* Remediation is **dry-run by default**. A live fix needs `POLICYGUARD_DRY_RUN=false` **and** the resource ID in `lambdas/remediation/safety/allowlist.json`; a missing allowlist allows nothing.
+* The IAM fix only *detaches* a policy (reversible); it never deletes it.
+* Run demos and tests only in dedicated sandbox AWS accounts.
 
 ---
 
-## 8. License / Academic Note
+## 8. Known Limitations
 
-> **Note**: PolicyGuard is a student project built for **[Course Name]** and is intended solely for educational and demonstration purposes. It is not intended for production deployment.
+Stated up front so nothing here is a surprise:
+
+* **One set of credentials does everything.** Locally the same IAM user scans and remediates. Separate least-privilege policies exist in `infra/iam/` for the Lambdas, but the local demo does not use that split.
+* **AWS only, one region.** S3 and IAM are account-wide, but security groups and CloudTrail are checked only in the configured region. No Azure/GCP, no multi-account.
+* **DPDP classification is tag-driven, not inferred.** Someone must tag each resource `handles_personal_data=true`; PolicyGuard does not look inside buckets. IAM users, security groups and CloudTrail are untagged, so their findings always fall under CIS (Tier 2).
+* **Encryption rule is stricter than AWS's default.** It requires SSE-KMS, so buckets using the default SSE-S3 are reported (a deliberate choice; the auto-fix applies SSE-KMS).
+* **Not every resource type is covered.** Only customer-managed IAM policies are scanned (not inline or AWS-managed ones); no RDS, EBS or KMS key-rotation checks.
+* **Remediation covers three rules.** Public buckets, encryption and wildcard policies. MFA, open ports and CloudTrail are flagged for manual action.
+* **The pipeline is not event-driven yet.** There are no EventBridge/Step Functions triggers; the AWS Config custom-rule hookup (`infra/config/`) has not been tested against a real Config recorder, and the DynamoDB audit-table write has not been tested against real DynamoDB (the dashboard uses SQLite).
+* **Blockchain anchoring has not been run on a real chain.** `AuditAnchor.sol` has not been compiled or deployed and no transaction has been sent. Only the Python client code is unit-tested, against a faked `web3` (`tests/test_blockchain_anchor.py`). It is called by `demo/simulate_violation.py` but **not** by the dashboard's live scanner.
+* **The hash chain is tamper-*evident*, not tamper-*proof*.** Anyone who can write to the database can rewrite every entry and recompute all hashes. The chain only becomes strong once its latest hash is stored somewhere that person cannot edit — which is what the (unrun) blockchain anchor is for.
+* **Regulatory citations are an interpretation.** DPDP Sec. 8(5) names no technical controls, and CIS references are not pinned to a single benchmark version.
+
+---
+
+## 9. License / Academic note
+
+PolicyGuard is a student project for **Advanced Cloud Computing**, for educational and demonstration purposes only. It is not intended for production use.
