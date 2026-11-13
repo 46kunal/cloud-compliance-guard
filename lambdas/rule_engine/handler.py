@@ -52,7 +52,27 @@ def _policy_allows_anyone(policy: dict) -> bool:
     return False
 
 
-def get_normalized_s3_resources() -> list:
+def _record_collection(report, service, status="SUCCESS", error=None):
+    """Accumulate collector health without changing the collector's resource return contract."""
+    if report is None:
+        return
+    current = report.setdefault(service, {"status": "SUCCESS", "errors": []})
+    rank = {"SUCCESS": 0, "PARTIAL": 1, "FAILED": 2}
+    if current.get("status") == "NOT_SCANNED":
+        current["status"] = "SUCCESS"
+    if rank.get(status, 2) > rank.get(current["status"], 0):
+        current["status"] = status
+    if error:
+        current["errors"].append(str(error))
+
+
+def _permission_or_api_failure(error, expected_absence=()):
+    response = getattr(error, "response", {}) or {}
+    code = response.get("Error", {}).get("Code", "")
+    return code not in set(expected_absence)
+
+
+def get_normalized_s3_resources(collection_report=None) -> list:
     """
     Lists S3 buckets using boto3, checks policy status for each bucket,
     and returns a list of normalized resource dicts.
@@ -68,6 +88,7 @@ def get_normalized_s3_resources() -> list:
             if not bucket_name:
                 continue
 
+            resource_complete = True
             is_public = False
             try:
                 policy_status = s3_client.get_bucket_policy_status(Bucket=bucket_name)
@@ -76,7 +97,10 @@ def get_normalized_s3_resources() -> list:
                     # Emulators (moto/LocalStack) don't compute IsPublic: evaluate the policy ourselves too
                     policy = json.loads(s3_client.get_bucket_policy(Bucket=bucket_name)["Policy"])
                     is_public = _policy_allows_anyone(policy)
-            except Exception:
+            except Exception as e:
+                if _permission_or_api_failure(e, ("NoSuchBucketPolicy",)):
+                    _record_collection(collection_report, "s3", "PARTIAL", f"Bucket policy status/policy could not be read: {e}")
+                    resource_complete = False
                 is_public = False
 
             # Public Access Block fully enabled overrides a public policy
@@ -85,7 +109,10 @@ def get_normalized_s3_resources() -> list:
                 cfg = pab.get("PublicAccessBlockConfiguration", {})
                 if cfg.get("BlockPublicPolicy") and cfg.get("RestrictPublicBuckets"):
                     is_public = False
-            except Exception:
+            except Exception as e:
+                if _permission_or_api_failure(e, ("NoSuchPublicAccessBlockConfiguration", "NoSuchPublicAccessBlock")):
+                    _record_collection(collection_report, "s3", "PARTIAL", f"Bucket public access block could not be read: {e}")
+                    resource_complete = False
                 pass
 
             encrypted = False
@@ -97,14 +124,20 @@ def get_normalized_s3_resources() -> list:
                     if algo in ("aws:kms", "aws:kms:dsse"):
                         encrypted = True
                         break
-            except Exception:
+            except Exception as e:
+                if _permission_or_api_failure(e, ("ServerSideEncryptionConfigurationNotFoundError",)):
+                    _record_collection(collection_report, "s3", "PARTIAL", f"Bucket encryption could not be read: {e}")
+                    resource_complete = False
                 encrypted = False
 
             tags = {}
             try:
                 tag_res = s3_client.get_bucket_tagging(Bucket=bucket_name)
                 tags = {t["Key"]: t["Value"] for t in tag_res.get("TagSet", []) if "Key" in t and "Value" in t}
-            except Exception:
+            except Exception as e:
+                if _permission_or_api_failure(e, ("NoSuchTagSet",)):
+                    _record_collection(collection_report, "s3", "PARTIAL", f"Bucket tags could not be read: {e}")
+                    resource_complete = False
                 tags = {}
 
             resources.append({
@@ -115,14 +148,18 @@ def get_normalized_s3_resources() -> list:
                 "encrypted": encrypted,
                 "permissions": [],
                 "tags": tags,
+                "_collection_complete": resource_complete,
             })
     except Exception as e:
+        _record_collection(collection_report, "s3", "FAILED", e)
         print(f"[DETECT] WARNING: S3 scan failed: {e}", file=sys.stderr)
+
+    _record_collection(collection_report, "s3")
 
     return resources
 
 
-def get_normalized_iam_resources() -> list:
+def get_normalized_iam_resources(collection_report=None) -> list:
     """
     Lists customer-managed IAM policies (as resource_type "iam_policy", with the
     default version's statements in "permissions") and IAM users (as resource_type
@@ -135,6 +172,7 @@ def get_normalized_iam_resources() -> list:
 
         for page in iam_client.get_paginator("list_policies").paginate(Scope="Local"):
             for policy in page.get("Policies", []):
+                resource_complete = True
                 try:
                     version = iam_client.get_policy_version(
                         PolicyArn=policy["Arn"],
@@ -145,6 +183,9 @@ def get_normalized_iam_resources() -> list:
                     if isinstance(statements, dict):
                         statements = [statements]
                 except Exception as e:
+                    if _permission_or_api_failure(e):
+                        _record_collection(collection_report, "iam", "PARTIAL", f"Policy version unavailable: {e}")
+                        resource_complete = False
                     statements = []
 
                 resources.append({
@@ -155,20 +196,28 @@ def get_normalized_iam_resources() -> list:
                     "encrypted": True,
                     "permissions": statements,
                     "tags": {},
+                    "_collection_complete": resource_complete,
                 })
 
         for page in iam_client.get_paginator("list_users").paginate():
             for user in page.get("Users", []):
                 user_name = user["UserName"]
+                resource_complete = True
                 try:
                     iam_client.get_login_profile(UserName=user_name)
                     has_console_access = True
                 except Exception as e:
+                    if _permission_or_api_failure(e, ("NoSuchEntity",)):
+                        _record_collection(collection_report, "iam", "PARTIAL", f"Login profile unavailable: {e}")
+                        resource_complete = False
                     has_console_access = False
                 try:
                     mfa = iam_client.list_mfa_devices(UserName=user_name)
                     mfa_enabled = bool(mfa.get("MFADevices"))
                 except Exception as e:
+                    if _permission_or_api_failure(e):
+                        _record_collection(collection_report, "iam", "PARTIAL", f"MFA devices unavailable: {e}")
+                        resource_complete = False
                     mfa_enabled = False
 
                 resources.append({
@@ -181,14 +230,18 @@ def get_normalized_iam_resources() -> list:
                     "tags": {},
                     "has_console_access": has_console_access,
                     "mfa_enabled": mfa_enabled,
+                    "_collection_complete": resource_complete,
                 })
     except Exception as e:
+        _record_collection(collection_report, "iam", "FAILED", e)
         print(f"[DETECT] WARNING: IAM scan failed: {e}", file=sys.stderr)
+
+    _record_collection(collection_report, "iam")
 
     return resources
 
 
-def get_normalized_ec2_resources() -> list:
+def get_normalized_ec2_resources(collection_report=None) -> list:
     """
     Lists EC2 security groups using boto3 and returns a list of normalized resource dicts.
     """
@@ -222,12 +275,15 @@ def get_normalized_ec2_resources() -> list:
                 "tags": tags,
             })
     except Exception as e:
+        _record_collection(collection_report, "ec2", "FAILED", e)
         print(f"[DETECT] WARNING: EC2 scan failed: {e}", file=sys.stderr)
+
+    _record_collection(collection_report, "ec2")
 
     return resources
 
 
-def get_normalized_cloudtrail_resources() -> list:
+def get_normalized_cloudtrail_resources(collection_report=None) -> list:
     """
     Returns ONE account-level resource (resource_type "cloudtrail_config") saying whether an
     active multi-region CloudTrail trail exists (CIS 3.1). Returns [] on API errors, so missing
@@ -247,6 +303,7 @@ def get_normalized_cloudtrail_resources() -> list:
                 active = True
                 break
 
+        _record_collection(collection_report, "cloudtrail")
         return [{
             "resource_type": "cloudtrail_config",
             "provider": "aws",
@@ -259,17 +316,18 @@ def get_normalized_cloudtrail_resources() -> list:
             "active_multi_region_trail": active,
         }]
     except Exception as e:
+        _record_collection(collection_report, "cloudtrail", "FAILED", e)
         print(f"[DETECT] WARNING: CloudTrail scan failed: {e}", file=sys.stderr)
         return []
 
 
-def get_all_resources() -> list:
+def get_all_resources(collection_report=None) -> list:
     """Merges every resource collector's output."""
     return (
-        get_normalized_s3_resources()
-        + get_normalized_iam_resources()
-        + get_normalized_ec2_resources()
-        + get_normalized_cloudtrail_resources()
+        get_normalized_s3_resources(collection_report)
+        + get_normalized_iam_resources(collection_report)
+        + get_normalized_ec2_resources(collection_report)
+        + get_normalized_cloudtrail_resources(collection_report)
     )
 
 
@@ -319,6 +377,8 @@ def run_rule_engine(resources: list) -> list:
     violations = []
 
     for resource in resources:
+        if resource.get("_collection_complete") is False:
+            continue
         tier = classify_tier(resource)
         for rule_mod in rule_modules:
             result = rule_mod.check(resource)
@@ -334,6 +394,8 @@ def run_rule_engine(resources: list) -> list:
                 violations.append({
                     "rule": rule_name,
                     "resource_id": resource_id,
+                    "provider": resource.get("provider", "aws"),
+                    "resource_type": resource.get("resource_type", "unknown"),
                     "clause": clause,
                     "tier": tier,
                     "compliant": False,
