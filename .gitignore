@@ -42,3 +42,6 @@ coverage.json
 db/*.db
 demo_resources.json
 demo/demo_resources.json
+
+# Build output
+build/

@@ -14,7 +14,8 @@
 | **Classify** | Picks the tier from the resource's `handles_personal_data` tag, attaches the DPDP or CIS clause, assigns a severity | `lambdas/tier_classifier.py`, `lambdas/risk_classifier/` |
 | **Remediate** | Fixes a few issues automatically — dry-run by default and only for allowlisted resources | `lambdas/remediation/` |
 | **Audit** | Appends each event to a SHA-256 hash chain; `verify_chain()` detects any edit | `lambdas/audit_logger/` |
-| **Visualize** | Flask dashboard that re-scans the account every 20 s | `dashboard/`, `db/` |
+| **Visualize** | Flask dashboard with login and roles (overview, frameworks, findings, scan history, reports, audit trail). Locally it re-scans every 20 s; on AWS a scheduled Lambda scans and the dashboard only reads | `dashboard/`, `db/`, `lambdas/scanner/` |
+| **Store** | SQLite locally, DynamoDB on AWS, behind one interface | `db/store.py`, `db/dynamo_store.py` |
 
 ### Rules
 
@@ -27,7 +28,31 @@
 | `mfa_required` | IAM user with console password and no MFA | MEDIUM | Manual review |
 | `cloudtrail_enabled` | No active multi-region CloudTrail trail | MEDIUM | Manual review |
 
+### India profile
+
+Set `POLICYGUARD_PROFILE=india` to add rules tied to Indian obligations. The default `baseline` profile keeps the six rules above.
+
+| Rule | Detects | Relates to |
+| :--- | :--- | :--- |
+| `data_residency_india` | S3 buckets and security groups outside `ap-south-1` / `ap-south-2` (a review pointer, not a legal finding) | DPDP s.16, RBI / SEBI / IRDAI localisation |
+| `tls_enforcement` | S3 bucket policy that does not deny non-TLS requests | DPDP Rule 6, SPDI Rules |
+| `log_retention_180d` | CloudWatch log groups that expire logs in under 180 days | CERT-In Directions 2022 |
+| `log_retention_365d` | CloudWatch log groups that expire logs in under 365 days | DPDP Rule 6 (not yet in force) |
+| `s3_versioning` | S3 versioning off | DPDP Rule 6 continuity safeguard |
+| `threat_detection_enabled` | No enabled GuardDuty detector | DPDP Rule 7, CERT-In reporting readiness |
+
+The mapping from legal obligations to these checks lives in [`compliance/india_catalog.json`](compliance/india_catalog.json).
+Every entry records whether it is in force, how much of it can be checked from configuration, and how well the
+clause wording has been verified. Nothing in the draft is verified against official text yet, and the UI says so.
+Measured behaviour of these rules is tested in `tests/test_india_rules.py`.
+
 Full rule-to-clause table: [`docs/compliance_mapping.md`](docs/compliance_mapping.md).
+
+### Running on AWS
+
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) covers the CloudFormation deployment (VPC, ALB, Auto Scaling servers,
+EBS and EFS, DynamoDB, Cognito login, CloudFront HTTPS, scheduled Lambda scanner), cost control, and the screenshot
+checklist for the Cloud Deployment Architecture Report.
 
 ---
 
