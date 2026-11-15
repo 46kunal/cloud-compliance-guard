@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · PolicyGuard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="auth-body">
+  <main class="auth-card" id="main">
+    <div class="brand auth-brand"><span class="brand-mark" aria-hidden="true">PG</span><span class="brand-name">PolicyGuard</span></div>
+    <p class="muted auth-tagline">Cloud configuration monitoring with an India-aware compliance catalog.</p>
+    {% if error %}<div class="banner banner-bad" role="alert">{{ error }}</div>{% endif %}
+    {% if challenge %}
+    <h1 class="auth-title">Choose a new password</h1>
+    <p class="muted">Your account was created with a temporary password. Set a permanent one to continue.</p>
+    <form method="post" action="{{ url_for('auth.new_password') }}" class="stack">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field"><span>New password</span>
+        <input type="password" name="password" autocomplete="new-password" required minlength="12" autofocus>
+      </label>
+      <p class="hint">At least 12 characters with upper and lower case letters, a number and a symbol.</p>
+      <button class="btn btn-primary" type="submit">Set password and sign in</button>
+    </form>
+    {% else %}
+    <h1 class="auth-title">Sign in</h1>
+    <form method="post" action="{{ url_for('auth.login') }}" class="stack">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field"><span>Username</span>
+        <input type="text" name="username" autocomplete="username" required autofocus>
+      </label>
+      <label class="field"><span>Password</span>
+        <input type="password" name="password" autocomplete="current-password" required>
+      </label>
+      <button class="btn btn-primary" type="submit">Sign in</button>
+    </form>
+    <p class="hint">{{ 'Accounts are managed in Amazon Cognito.' if mode == 'cognito' else 'Development sign-in (local users).' }}
+      Roles: viewer, auditor, admin.</p>
+    {% endif %}
+    <p class="hint auth-instance">Served by <code>{{ instance.instance_id }}</code>{% if instance.availability_zone %} · {{ instance.availability_zone }}{% endif %}</p>
+  </main>
+</body>
+</html>

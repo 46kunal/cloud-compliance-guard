@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="assessment-warning" class="banner banner-warn" role="status" hidden></div>
+
+<section class="kpi-grid" aria-label="Key figures">
+  <article class="kpi kpi-score">
+    <h2 class="kpi-label">Configuration compliance</h2>
+    <div class="gauge" id="score-gauge" role="img" aria-label="Compliance score"></div>
+    <p class="kpi-note" id="score-note">Share of successfully assessed resources with no open finding.</p>
+  </article>
+  <article class="kpi"><h2 class="kpi-label">Open findings</h2><div class="kpi-value" id="total">–</div><p class="kpi-note" id="severity-breakdown"></p></article>
+  <article class="kpi"><h2 class="kpi-label">Resources assessed</h2><div class="kpi-value" id="resources-assessed">–</div><p class="kpi-note" id="resources-note"></p></article>
+  <article class="kpi"><h2 class="kpi-label">Latest scan</h2><div class="kpi-value" id="scan-status">–</div><p class="kpi-note" id="last-scan"></p></article>
+</section>
+
+<section class="grid-2">
+  <article class="panel">
+    <div class="panel-head"><h2>Findings per scan</h2><span class="muted" id="trend-note"></span></div>
+    <div id="trend-chart" class="chart" role="img" aria-label="Findings detected per scan"></div>
+  </article>
+  <article class="panel">
+    <div class="panel-head"><h2>Open findings by rule</h2></div>
+    <div id="rule-bars" class="bars"></div>
+  </article>
+</section>
+
+<section class="grid-2">
+  <article class="panel">
+    <div class="panel-head"><h2>Service collection</h2><span class="muted" id="assessment-scope"></span></div>
+    <div id="service-statuses" class="service-list"></div>
+    <div id="collection-errors" class="collection-errors" hidden></div>
+  </article>
+  <article class="panel">
+    <div class="panel-head"><h2>Indian frameworks at a glance</h2><a href="{{ url_for('frameworks') }}">Details</a></div>
+    <div id="framework-glance" class="glance"></div>
+  </article>
+</section>
+
+<section class="panel scan-panel">
+  <div>
+    <h2>Run a scan</h2>
+    <p class="muted" id="scan-help">Collects live AWS configuration and updates the findings.</p>
+  </div>
+  <div class="scan-actions">
+    <span id="scan-feedback" role="status" aria-live="polite" hidden></span>
+    <button id="scan-now" class="btn btn-primary" type="button" hidden>Scan now</button>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/overview.js') }}"></script>{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="lead">Open findings stay visible until their service was successfully assessed and the issue is gone. Resolved findings stay in history.</p>
+<section class="filters" aria-label="Filters">
+  <label class="field inline"><span>Search</span><input id="violation-search" type="search" autocomplete="off" placeholder="Rule, resource, clause…"></label>
+  <label class="field inline"><span>Severity</span>
+    <select id="violation-severity"><option value="ALL">All</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option></select></label>
+  <label class="field inline"><span>Status</span>
+    <select id="violation-status"><option value="OPEN">Open</option><option value="ALL">All</option><option>RESOLVED</option><option>NEW</option><option>ACTIVE</option><option>REOPENED</option></select></label>
+  <label class="field inline"><span>Framework</span><select id="violation-framework"><option value="ALL">All</option></select></label>
+  <span class="muted" id="findings-count"></span>
+</section>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Status</th><th>Severity</th><th>Evidence</th><th>Rule</th><th>Resource</th><th>First detected</th><th>Last detected</th><th>Regulation</th><th>Remediation</th></tr></thead>
+  <tbody id="violations-body"><tr><td colspan="9">Loading…</td></tr></tbody>
+</table>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/findings.js') }}"></script>{% endblock %}

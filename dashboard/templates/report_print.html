@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>PolicyGuard report</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="print-body">
+<main class="print-page">
+  <h1>PolicyGuard configuration report</h1>
+  <p class="muted">Generated {{ generated }} · Profile: {{ profile }} · Catalog {{ catalog.catalog_version }}</p>
+  <p class="banner banner-warn">{{ disclaimer }}</p>
+  {% if scan %}
+  <h2>Scan scope</h2>
+  <table><tbody>
+    <tr><th>Scan</th><td>{{ scan.id }} ({{ scan.status }})</td></tr>
+    <tr><th>Account · Region</th><td>{{ scan.account_scope }} · {{ scan.region_scope }}</td></tr>
+    <tr><th>Resources</th><td>{{ scan.resources_assessed }} assessed of {{ scan.resources_discovered }} discovered</td></tr>
+    <tr><th>Completed</th><td>{{ scan.completed_at or scan.scanned_at }}</td></tr>
+  </tbody></table>
+  {% else %}<p>No scan has been recorded.</p>{% endif %}
+
+  <h2>Obligations</h2>
+  <table>
+    <thead><tr><th>Framework</th><th>Citation</th><th>State</th><th>Open</th><th>In force</th><th>Verified</th></tr></thead>
+    <tbody>
+    {% for item in summary %}
+      <tr><td>{{ item.framework }}</td><td>{{ item.citation }}</td>
+          <td>{{ item.state.replace('_', ' ') }}</td><td>{{ item.open_findings }}</td>
+          <td>{{ 'yes' if item.in_force == 'in_force' else 'not yet' }}</td><td>{{ item.verification }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Open findings ({{ open_findings|length }})</h2>
+  <table>
+    <thead><tr><th>Severity</th><th>Rule</th><th>Resource</th><th>First detected</th><th>Clause</th></tr></thead>
+    <tbody>
+    {% for f in open_findings %}
+      <tr><td>{{ f.severity }}</td><td>{{ f.rule }}</td><td class="mono">{{ f.resource_id }}</td><td>{{ f.first_detected }}</td><td>{{ f.clause }}</td></tr>
+    {% else %}<tr><td colspan="5">No open findings.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  <p class="hint">Entries marked "secondary" were taken from published summaries and should be confirmed against the official text.</p>
+  <p class="no-print"><a class="btn btn-primary" href="javascript:window.print()">Print or save as PDF</a></p>
+</main>
+</body>
+</html>

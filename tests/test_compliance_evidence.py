@@ -171,7 +171,7 @@ def test_evidence_migration_is_repeatable_and_dashboard_page_has_control(tmp_pat
     second = connect(path)
     assert second.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='finding_evidence'").fetchone()
     second.close()
-    page = create_app().test_client().get("/")
+    page = create_app().test_client().get("/findings")
     assert page.status_code == 200
     assert b"<th>Evidence</th>" in page.data
-    assert b"Finding history" in page.data
+    assert b"resolved findings stay in history" in page.data.lower()

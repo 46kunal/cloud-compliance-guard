@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="lead" id="fw-disclaimer"></p>
+<div class="meta-row" id="fw-meta"></div>
+<div class="legend" aria-label="Legend">
+  <span class="pill pill-bad">Findings open</span><span class="pill pill-ok">No open findings</span>
+  <span class="pill pill-muted">Not assessed</span><span class="pill pill-warn">Not yet in force</span>
+  <span class="pill pill-info">Verification: secondary</span>
+</div>
+<div id="framework-groups" class="stack-lg"><p class="muted">Loading…</p></div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/frameworks.js') }}"></script>{% endblock %}

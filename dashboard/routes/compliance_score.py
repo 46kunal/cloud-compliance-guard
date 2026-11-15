@@ -2,7 +2,7 @@ from collections import Counter
 
 from flask import Blueprint, jsonify
 
-from db.schema import connect, get_last_scan_time, get_latest_scan, get_scan_assessed_resource_ids, get_violations
+from db.store import connect, get_last_scan_time, get_latest_scan, get_scan_assessed_resource_ids, get_violations
 
 compliance_score_bp = Blueprint("compliance_score", __name__)
 

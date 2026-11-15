@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="kpi-grid">
+  <article class="kpi"><h2 class="kpi-label">This request was served by</h2><div class="kpi-value mono" id="inf-instance">–</div><p class="kpi-note" id="inf-zone"></p></article>
+  <article class="kpi"><h2 class="kpi-label">Storage</h2><div class="kpi-value" id="inf-storage">–</div><p class="kpi-note">Findings, evidence and the audit chain</p></article>
+  <article class="kpi"><h2 class="kpi-label">Rule profile</h2><div class="kpi-value" id="inf-profile">–</div><p class="kpi-note" id="inf-auth"></p></article>
+  <article class="kpi"><h2 class="kpi-label">Scans recorded</h2><div class="kpi-value" id="inf-scans">–</div><p class="kpi-note" id="inf-avg"></p></article>
+</section>
+<p class="hint">Refresh this page: with two servers behind the load balancer, the instance ID alternates.</p>
+
+<section class="panel">
+  <div class="panel-head"><h2>Auto Scaling group</h2><span class="muted" id="asg-summary"></span></div>
+  <div id="asg-body" class="muted">Loading…</div>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>Cost of the scanner</h2><span class="muted" id="cost-label"></span></div>
+  <div id="cost-body" class="muted">Loading…</div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/infrastructure.js') }}"></script>{% endblock %}

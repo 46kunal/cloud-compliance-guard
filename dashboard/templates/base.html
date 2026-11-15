@@ -3,20 +3,60 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PolicyGuard</title>
+  <title>{{ title }} · PolicyGuard</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-<body>
-  <header>
-    <h1>PolicyGuard</h1>
-    <nav>
-      <a href="{{ url_for('index') }}">Dashboard</a>
-      <a href="{{ url_for('audit') }}">Audit Trail</a>
-    </nav>
-  </header>
-  <main>
-    {% block content %}{% endblock %}
-  </main>
-  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<body data-page="{{ page }}" data-role="{{ user.role if user else '' }}">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="shell">
+    <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">PG</span><span class="brand-name">PolicyGuard</span></div>
+      <nav>
+        <a href="{{ url_for('index') }}" data-nav="index"><span class="ico" aria-hidden="true">◧</span>Overview</a>
+        <a href="{{ url_for('frameworks') }}" data-nav="frameworks"><span class="ico" aria-hidden="true">⚖</span>Frameworks</a>
+        <a href="{{ url_for('findings') }}" data-nav="findings"><span class="ico" aria-hidden="true">⚑</span>Findings</a>
+        <a href="{{ url_for('scans') }}" data-nav="scans"><span class="ico" aria-hidden="true">↻</span>Scan history</a>
+        <a href="{{ url_for('infrastructure') }}" data-nav="infrastructure"><span class="ico" aria-hidden="true">☁</span>Infrastructure</a>
+        {% if user and user.role in ('auditor', 'admin') %}
+        <a href="{{ url_for('reports') }}" data-nav="reports"><span class="ico" aria-hidden="true">▤</span>Reports</a>
+        <a href="{{ url_for('audit') }}" data-nav="audit"><span class="ico" aria-hidden="true">⛓</span>Audit trail</a>
+        {% endif %}
+      </nav>
+      <div class="sidebar-foot">
+        <span class="profile-pill" title="Active rule profile">{{ 'India profile' if profile == 'india' else 'Baseline profile' }}</span>
+      </div>
+    </aside>
+    <div class="content">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menu-btn" type="button" aria-label="Toggle navigation" aria-controls="sidebar" aria-expanded="false">☰</button>
+        <h1 class="page-title">{{ title }}</h1>
+        <div class="topbar-actions">
+          <button class="icon-btn" id="theme-btn" type="button" aria-label="Switch between light and dark theme">◐</button>
+          {% if user %}
+          <div class="user-chip" title="Signed in">
+            <span class="user-name">{{ user.username }}</span>
+            <span class="role-badge role-{{ user.role }}">{{ user.role }}</span>
+          </div>
+          {% if user.auth != 'off' %}
+          <form method="post" action="{{ url_for('auth.logout') }}" class="inline-form">
+            <input type="hidden" name="csrf" value="{{ csrf_value() }}">
+            <button type="submit" class="btn btn-quiet">Sign out</button>
+          </form>
+          {% endif %}
+          {% endif %}
+        </div>
+      </header>
+      <div id="data-load-error" class="banner banner-bad" role="status" hidden></div>
+      <main id="main" tabindex="-1">
+        {% block content %}{% endblock %}
+      </main>
+      <footer class="footer">
+        <span>Served by <code>{{ instance.instance_id }}</code>{% if instance.availability_zone %} · {{ instance.availability_zone }}{% endif %}</span>
+        <span>Configuration checks only; not a legal compliance determination.</span>
+      </footer>
+    </div>
+  </div>
+  <script src="{{ url_for('static', filename='js/common.js') }}"></script>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="lead">Exports describe the latest scan. Each evidence record carries a SHA-256 hash so an auditor can check it was not altered after the scan.</p>
+<section class="grid-3">
+  <article class="panel">
+    <h2>Findings (CSV)</h2>
+    <p class="muted">All findings with status, severity, dates and the obligations they relate to.</p>
+    <a class="btn btn-primary" href="/api/export/findings.csv" download>Download CSV</a>
+  </article>
+  <article class="panel">
+    <h2>Evidence bundle (JSON)</h2>
+    <p class="muted">Scan scope, catalog version, findings and per-scan evidence with hashes.</p>
+    <a class="btn btn-primary" href="/api/export/evidence-bundle.json" download>Download JSON</a>
+  </article>
+  <article class="panel">
+    <h2>Printable report</h2>
+    <p class="muted">Framework summary and open findings. Use the browser Print option, then Save as PDF.</p>
+    <a class="btn btn-primary" href="{{ url_for('insight.printable_report') }}" target="_blank" rel="noopener">Open report</a>
+  </article>
+</section>
+<section class="panel">
+  <div class="panel-head"><h2>Saved evidence bundles</h2><span class="muted" id="saved-note"></span></div>
+  <div id="saved-body" class="muted">Loading…</div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/reports.js') }}"></script>{% endblock %}

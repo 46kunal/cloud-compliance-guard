@@ -1,14 +1,15 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Hash-chained audit trail</h2>
-<p>Chain integrity: <strong id="chain-status">checking…</strong></p>
+<section class="panel">
+  <div class="panel-head"><h2>Hash-chained audit trail</h2><button id="verify-btn" class="btn" type="button">Verify chain</button></div>
+  <p>Chain integrity: <strong id="chain-status">checking…</strong></p>
+  <p class="hint">Each entry stores the hash of the one before it. Editing any entry breaks every hash after it. This detects tampering; it does not prevent someone with database write access from rewriting the whole chain, which is why the latest hash should be anchored somewhere they cannot edit.</p>
+</section>
+<div class="table-wrap">
 <table>
-  <thead>
-    <tr><th>#</th><th>Time (UTC)</th><th>Event</th><th>Details</th><th>Previous hash</th><th>Entry hash</th></tr>
-  </thead>
-  <tbody id="audit-body">
-    <tr><td colspan="6">Loading…</td></tr>
-  </tbody>
+  <thead><tr><th>#</th><th>Time (UTC)</th><th>Event</th><th>Details</th><th>Previous hash</th><th>Entry hash</th></tr></thead>
+  <tbody id="audit-body"><tr><td colspan="6">Loading…</td></tr></tbody>
 </table>
-<script>window.PAGE = "audit";</script>
+</div>
 {% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/audit.js') }}"></script>{% endblock %}

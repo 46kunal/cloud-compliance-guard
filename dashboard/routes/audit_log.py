@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify
 
-from db.schema import connect, get_audit_log
+from db.store import connect, get_audit_log
 from lambdas.audit_logger.hash_chain import verify_chain
 
 audit_log_bp = Blueprint("audit_log", __name__)

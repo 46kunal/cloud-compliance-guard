@@ -207,9 +207,12 @@ def test_dashboard_routes_render_and_report_not_assessed(tmp_path, monkeypatch):
     app = create_app()
     client = app.test_client()
 
-    javascript = (Path(__file__).parents[1] / "dashboard" / "static" / "js" / "dashboard.js").read_text(encoding="utf-8")
-    frontend_urls = set(re.findall(r'(?:getJson|fetch)\("(/api/[^"?]+)', javascript))
-    assert frontend_urls == {"/api/compliance-score", "/api/findings", "/api/audit-log", "/api/scan", "/api/findings/"}
+    js_dir = Path(__file__).parents[1] / "dashboard" / "static" / "js"
+    javascript = "\n".join(p.read_text(encoding="utf-8") for p in sorted(js_dir.glob("*.js")))
+    frontend_urls = set(re.findall(r'(?:getJson|postJson|fetch)\("(/api/[^"?]+)', javascript))
+    assert frontend_urls == {"/api/compliance-score", "/api/findings", "/api/audit-log", "/api/scan", "/api/findings/",
+                             "/api/scans", "/api/frameworks", "/api/usage", "/api/instance", "/api/me",
+                             "/api/reports/saved"}
     registered = {(rule.rule, method) for rule in app.url_map.iter_rules() for method in rule.methods}
     for api_url in ("/api/compliance-score", "/api/findings", "/api/audit-log"):
         assert (api_url, "GET") in registered
@@ -224,7 +227,7 @@ def test_dashboard_routes_render_and_report_not_assessed(tmp_path, monkeypatch):
     violations = client.get("/api/violations").get_json()
     audit = client.get("/api/audit-log").get_json()
     scan_response = client.post("/api/scan")
-    assert page.status_code == 200 and b"Finding history" in page.data
+    assert page.status_code == 200 and b"Configuration compliance" in page.data
     assert audit_page.status_code == 200
     assert score["score"] is None and score["score_label"] == "Not Assessed"
     assert score["resources_assessed"] == score["resources_discovered"] == 0

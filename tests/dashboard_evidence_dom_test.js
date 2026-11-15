@@ -60,7 +60,8 @@ const context = vm.createContext({
     return { ok: true, json: async () => evidenceResponse };
   },
 });
-vm.runInContext(fs.readFileSync("dashboard/static/js/dashboard.js", "utf8"), context);
+vm.runInContext(fs.readFileSync("dashboard/static/js/common.js", "utf8"), context);
+vm.runInContext(fs.readFileSync("dashboard/static/js/findings.js", "utf8"), context);
 vm.runInContext(`currentViolations = [{id: 41, evidence_available: true, status: "NEW", severity: "HIGH", rule: "public_storage",
   resource_id: "bucket", remediation: {}}]; renderViolations();`, context);
 

@@ -3,7 +3,14 @@ PolicyGuard compliance dashboard.
 
     python demo/simulate_violation.py --save   # scan your AWS account into the dashboard DB
     python dashboard/app.py                     # http://127.0.0.1:5000
+
+Environment (all optional):
+    POLICYGUARD_BACKEND=sqlite|dynamodb   storage backend            (default sqlite)
+    POLICYGUARD_PROFILE=baseline|india    which rules are enabled    (default baseline)
+    POLICYGUARD_AUTH=off|local|cognito    login mode                 (default off)
+    POLICYGUARD_SCANNER_FUNCTION=<name>   invoke this Lambda for "Scan now" instead of scanning in-process
 """
+import json
 import os
 import sys
 
@@ -13,44 +20,84 @@ if PROJECT_ROOT not in sys.path:
 
 from flask import Flask, jsonify, render_template
 
+from dashboard.auth import auth_mode, csrf_token, current_user, init_auth
+from dashboard.instance import instance_info
 from dashboard.routes.audit_log import audit_log_bp
 from dashboard.routes.compliance_score import compliance_score_bp
+from dashboard.routes.insight import insight_bp
 from dashboard.routes.violations import violations_bp
+
+
+def _run_scan():
+    function = os.environ.get("POLICYGUARD_SCANNER_FUNCTION")
+    if function:
+        import boto3
+        response = boto3.client("lambda").invoke(FunctionName=function, InvocationType="RequestResponse", Payload=b"{}")
+        payload = json.loads(response["Payload"].read() or b"{}")
+        if response.get("FunctionError"):
+            raise RuntimeError(payload.get("errorMessage", "scanner function failed"))
+        return payload
+    from db.store import connect
+    from dashboard.scanner import scan_and_save
+    conn = connect()
+    try:
+        return scan_and_save(conn)
+    finally:
+        conn.close()
 
 
 def create_app() -> Flask:
     app = Flask(__name__)
+    init_auth(app)
     app.register_blueprint(violations_bp)
     app.register_blueprint(compliance_score_bp)
     app.register_blueprint(audit_log_bp)
+    app.register_blueprint(insight_bp)
 
-    @app.route("/")
-    def index():
-        return render_template("dashboard.html")
+    @app.context_processor
+    def shell_context():
+        info = instance_info()
+        return {"user": current_user(), "instance": info,
+                "csrf_value": lambda: csrf_token() if auth_mode() != "off" else "",
+                "profile": os.environ.get("POLICYGUARD_PROFILE", "baseline")}
 
-    @app.route("/audit")
-    def audit():
-        return render_template("audit_trail.html")
+    @app.route("/health")
+    def health():
+        return jsonify({"status": "ok"})
+
+    def page(name, template, title):
+        def view():
+            return render_template(template, title=title, page=name)
+        view.__name__ = name
+        app.route("/" if name == "index" else f"/{name}")(view)
+
+    page("index", "overview.html", "Overview")
+    page("frameworks", "frameworks.html", "Frameworks")
+    page("findings", "findings.html", "Findings")
+    page("scans", "scans.html", "Scan history")
+    page("infrastructure", "infrastructure.html", "Infrastructure")
+    page("reports", "reports.html", "Reports")
+    page("audit", "audit_trail.html", "Audit trail")
 
     @app.route("/api/scan", methods=["POST"])
     def scan_now():
-        from db.schema import connect
-        from dashboard.scanner import scan_and_save
-        conn = connect()
         try:
-            return jsonify(scan_and_save(conn))
-        finally:
-            conn.close()
+            return jsonify(_run_scan())
+        except Exception as error:
+            app.logger.exception("scan failed")
+            return jsonify({"error": "Scan failed", "detail": str(error)}), 500
 
     return app
 
 
-# Live mode: re-scan the AWS account every N seconds (POLICYGUARD_SCAN_INTERVAL=0 disables)
-SCAN_INTERVAL = int(os.environ.get("POLICYGUARD_SCAN_INTERVAL", "20"))
+# Live mode: re-scan the AWS account every N seconds (POLICYGUARD_SCAN_INTERVAL=0 disables).
+# On AWS the scheduled Lambda does this, so the dashboard servers do not scan on their own.
+_default_interval = "0" if os.environ.get("POLICYGUARD_BACKEND") == "dynamodb" else "20"
+SCAN_INTERVAL = int(os.environ.get("POLICYGUARD_SCAN_INTERVAL", _default_interval))
 
 if __name__ == "__main__":
     if SCAN_INTERVAL > 0:
         from dashboard.scanner import start_background_scanner
         start_background_scanner(SCAN_INTERVAL)
         print(f"[SCAN] Live scanning AWS every {SCAN_INTERVAL}s")
-    create_app().run(host="127.0.0.1", port=int(os.environ.get("PORT", 5000)), debug=False)
+    create_app().run(host=os.environ.get("HOST", "127.0.0.1"), port=int(os.environ.get("PORT", 5000)), debug=False)

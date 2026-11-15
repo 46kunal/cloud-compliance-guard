@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <div class="panel-head"><h2>Findings detected and resources assessed</h2></div>
+  <div id="scan-chart" class="chart" role="img" aria-label="Scan history chart"></div>
+</section>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Scan</th><th>Status</th><th>Started</th><th>Duration</th><th>Assessed / discovered</th><th>Findings</th><th>Account · Region</th><th>Notes</th></tr></thead>
+  <tbody id="scan-body"><tr><td colspan="8">Loading…</td></tr></tbody>
+</table>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/scans.js') }}"></script>{% endblock %}
