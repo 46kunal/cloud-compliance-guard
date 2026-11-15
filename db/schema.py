@@ -100,7 +100,10 @@ def _now():
 def _resource_type(rule):
     return {"public_storage": "object_storage", "encryption_at_rest": "object_storage",
             "wildcard_permission": "iam_policy", "mfa_required": "iam_user",
-            "open_admin_ports": "security_group", "cloudtrail_enabled": "cloudtrail_config"}.get(rule, "unknown")
+            "open_admin_ports": "security_group", "cloudtrail_enabled": "cloudtrail_config",
+            "tls_enforcement": "object_storage", "s3_versioning": "object_storage",
+            "data_residency_india": "object_storage", "log_retention_180d": "cloudtrail_config",
+            "log_retention_365d": "cloudtrail_config", "threat_detection_enabled": "cloudtrail_config"}.get(rule, "unknown")
 
 
 def stable_finding_key(rule, provider, account_scope, resource_type, resource_id):
@@ -327,7 +330,26 @@ def get_latest_scan(conn):
     row = conn.execute("SELECT * FROM scans ORDER BY id DESC LIMIT 1").fetchone()
     if not row:
         return None
-    result = dict(row)
+    return normalize_scan(dict(row))
+
+
+def get_scans(conn, limit=30):
+    rows = conn.execute("SELECT * FROM scans ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    return [normalize_scan(dict(r)) for r in rows]
+
+
+def get_finding(conn, finding_id):
+    row = conn.execute("SELECT * FROM findings WHERE id=?", (int(finding_id),)).fetchone()
+    return {**dict(row), "remediation": json.loads(row["remediation"] or "{}")} if row else None
+
+
+def count_finding_events(conn, scan_id, event_type):
+    return conn.execute("SELECT COUNT(*) FROM finding_events WHERE scan_id=? AND event_type=?",
+                        (scan_id, event_type)).fetchone()[0]
+
+
+def normalize_scan(result):
+    """Validate and normalise a stored scan record (shared by every storage backend)."""
     defaults = {"services_scanned": [], "service_statuses": {}, "collection_errors": []}
     for key, fallback in defaults.items():
         raw = result.get(key)

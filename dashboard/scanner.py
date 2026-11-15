@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 import boto3
 
-from db.schema import begin_scan, connect, get_audit_log, get_violations, save_scan
+from db.store import begin_scan, connect, count_finding_events, get_audit_log, get_violations, save_scan
 from dashboard.evidence import build_evidence_records
 from lambdas.audit_logger.hash_chain import GENESIS, append_entry
 from lambdas.remediation.handler import remediate_violations
@@ -127,7 +127,7 @@ def scan_and_save(conn, resources: list = None, collection_report: dict = None) 
             assessed_resource_records=assessed_resources,
             evidence_records=evidence_records,
         )
-        resolved = conn.execute("SELECT COUNT(*) FROM finding_events WHERE scan_id=? AND event_type='RESOLVED'", (scan_id,)).fetchone()[0]
+        resolved = count_finding_events(conn, scan_id, 'RESOLVED')
         return {
             "scan_id": scan_id, "status": status, "resources": len(resources),
             "resources_discovered": len(resources), "resources_assessed": len(assessed_resources),
