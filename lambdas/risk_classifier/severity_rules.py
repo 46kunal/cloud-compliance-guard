@@ -13,7 +13,8 @@ def classify(violation: dict) -> str:
 
     if rule in ("public_storage", "wildcard_permission", "open_admin_ports"):
         return "HIGH"
-    elif rule in ("encryption_at_rest", "mfa_required", "cloudtrail_enabled"):
+    elif rule in ("encryption_at_rest", "mfa_required", "cloudtrail_enabled", "log_retention_180d",
+                  "log_retention_365d", "tls_enforcement", "threat_detection_enabled", "data_residency_india"):
         return "MEDIUM"
     else:
         return "LOW"

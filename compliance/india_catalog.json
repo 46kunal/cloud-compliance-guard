@@ -1,0 +1,571 @@
+{
+  "catalog_version": "0.2.0-draft",
+  "last_reviewed": "2026-11-16",
+  "scope_note": "Maps Indian legal/regulatory obligations to cloud-configuration checks. A passing check is evidence about configuration only; it is not a legal compliance determination. Every entry carries a verification status: only 'primary' means the clause wording was checked against the official text.",
+  "legend": {
+    "check_status": {
+      "implemented": "A rule exists in lambdas/rule_engine/rules/ today.",
+      "planned": "Technically checkable via AWS APIs; no rule written yet.",
+      "partial": "Only part of the obligation can be checked from configuration.",
+      "manual-only": "Cannot be assessed from cloud configuration; must be reviewed by a person."
+    },
+    "verification": {
+      "primary": "Wording checked against the official gazette/circular.",
+      "secondary": "Taken from law-firm or vendor summaries; confirm against the official text before citing.",
+      "needs-verification": "Sources disagree or a claim could not be confirmed."
+    },
+    "in_force": {
+      "in_force": "Binding today.",
+      "upcoming": "Notified but obligations not yet binding."
+    }
+  },
+  "checks": [
+    {
+      "id": "public_storage",
+      "title": "Storage not publicly accessible",
+      "services": [
+        "s3"
+      ],
+      "severity": "HIGH",
+      "status": "implemented",
+      "rule": "public_storage",
+      "extend_to": [
+        "rds public snapshots",
+        "ebs public snapshots",
+        "efs public access"
+      ],
+      "profile": "baseline"
+    },
+    {
+      "id": "encryption_at_rest",
+      "title": "Encryption at rest enabled",
+      "services": [
+        "s3",
+        "ebs",
+        "rds",
+        "dynamodb",
+        "efs"
+      ],
+      "severity": "MEDIUM",
+      "status": "implemented",
+      "rule": "encryption_at_rest",
+      "notes": "Rule currently covers S3 only and requires SSE-KMS (stricter than the AWS default). EBS, RDS, DynamoDB and EFS are planned extensions.",
+      "profile": "baseline"
+    },
+    {
+      "id": "tls_enforcement",
+      "title": "TLS enforced for data in transit",
+      "services": [
+        "s3"
+      ],
+      "severity": "MEDIUM",
+      "status": "implemented",
+      "rule": "tls_enforcement",
+      "notes": "S3 bucket policy must deny aws:SecureTransport=false. ALB HTTP-to-HTTPS redirect is a planned extension.",
+      "profile": "india"
+    },
+    {
+      "id": "wildcard_permission",
+      "title": "No wildcard Allow on all resources",
+      "services": [
+        "iam"
+      ],
+      "severity": "HIGH",
+      "status": "implemented",
+      "rule": "wildcard_permission",
+      "profile": "baseline"
+    },
+    {
+      "id": "mfa_required",
+      "title": "MFA for IAM users with console access",
+      "services": [
+        "iam"
+      ],
+      "severity": "MEDIUM",
+      "status": "implemented",
+      "rule": "mfa_required",
+      "profile": "baseline"
+    },
+    {
+      "id": "root_mfa",
+      "title": "Root account MFA enabled and no root access keys",
+      "services": [
+        "iam"
+      ],
+      "severity": "HIGH",
+      "status": "planned",
+      "rule": null,
+      "profile": "baseline"
+    },
+    {
+      "id": "stale_access_keys",
+      "title": "No unused or old IAM access keys",
+      "services": [
+        "iam"
+      ],
+      "severity": "MEDIUM",
+      "status": "planned",
+      "rule": null,
+      "notes": "Threshold (for example 90 days) is a policy choice, not a legal requirement.",
+      "profile": "baseline"
+    },
+    {
+      "id": "open_admin_ports",
+      "title": "SSH/RDP not open to the internet",
+      "services": [
+        "ec2"
+      ],
+      "severity": "HIGH",
+      "status": "implemented",
+      "rule": "open_admin_ports",
+      "profile": "baseline"
+    },
+    {
+      "id": "cloudtrail_enabled",
+      "title": "Active multi-region CloudTrail trail",
+      "services": [
+        "cloudtrail"
+      ],
+      "severity": "MEDIUM",
+      "status": "implemented",
+      "rule": "cloudtrail_enabled",
+      "profile": "baseline"
+    },
+    {
+      "id": "vpc_flow_logs",
+      "title": "VPC flow logs enabled",
+      "services": [
+        "ec2"
+      ],
+      "severity": "MEDIUM",
+      "status": "planned",
+      "rule": null,
+      "profile": "baseline"
+    },
+    {
+      "id": "s3_access_logging",
+      "title": "S3 server access logging enabled on data buckets",
+      "services": [
+        "s3"
+      ],
+      "severity": "LOW",
+      "status": "planned",
+      "rule": null,
+      "profile": "baseline"
+    },
+    {
+      "id": "log_retention_180d",
+      "title": "Logs retained for at least 180 days",
+      "services": [
+        "cloudwatch"
+      ],
+      "severity": "HIGH",
+      "status": "implemented",
+      "rule": "log_retention_180d",
+      "notes": "Checks CloudWatch log groups only. S3 lifecycle on log buckets is not yet checked. Review which log groups are in scope.",
+      "profile": "india"
+    },
+    {
+      "id": "log_retention_365d",
+      "title": "Logs retained for at least one year",
+      "services": [
+        "cloudwatch"
+      ],
+      "severity": "HIGH",
+      "status": "implemented",
+      "rule": "log_retention_365d",
+      "profile": "india",
+      "notes": "Checks CloudWatch log groups only. S3 lifecycle on log buckets is not yet checked. Review which log groups are in scope."
+    },
+    {
+      "id": "log_location_india",
+      "title": "Log storage located in Indian regions",
+      "services": [
+        "cloudwatch",
+        "s3",
+        "cloudtrail"
+      ],
+      "severity": "HIGH",
+      "status": "planned",
+      "rule": null,
+      "notes": "Also flag log destinations that forward to non-Indian regions or third-party SIEM endpoints.",
+      "profile": "baseline"
+    },
+    {
+      "id": "data_residency_india",
+      "title": "Data stores located in Indian regions (ap-south-1, ap-south-2)",
+      "services": [
+        "s3",
+        "ec2"
+      ],
+      "severity": "MEDIUM",
+      "status": "implemented",
+      "rule": "data_residency_india",
+      "notes": "Currently checks S3 buckets and security groups. RDS, EBS, DynamoDB and EFS are planned. Emitted as a review pointer, not a legal finding.",
+      "profile": "india"
+    },
+    {
+      "id": "backup_enabled",
+      "title": "Backups configured for data stores",
+      "services": [
+        "rds",
+        "dynamodb",
+        "ebs",
+        "efs"
+      ],
+      "severity": "MEDIUM",
+      "status": "planned",
+      "rule": null,
+      "notes": "RDS backup retention above zero, DynamoDB PITR, an AWS Backup plan covering the resource.",
+      "profile": "baseline"
+    },
+    {
+      "id": "s3_versioning",
+      "title": "S3 versioning enabled on data buckets",
+      "services": [
+        "s3"
+      ],
+      "severity": "LOW",
+      "status": "implemented",
+      "rule": "s3_versioning",
+      "profile": "india",
+      "notes": "Checks S3 versioning only. RDS/DynamoDB/EBS backups are covered by the planned backup_enabled check."
+    },
+    {
+      "id": "threat_detection_enabled",
+      "title": "Threat detection and alerting enabled",
+      "services": [
+        "guardduty"
+      ],
+      "severity": "MEDIUM",
+      "status": "implemented",
+      "rule": "threat_detection_enabled",
+      "notes": "Checks that a GuardDuty detector is enabled. Alert routing (CloudWatch/SNS) is not yet checked.",
+      "profile": "india"
+    },
+    {
+      "id": "retention_lifecycle",
+      "title": "Retention/lifecycle policy defined for personal-data stores",
+      "services": [
+        "s3",
+        "dynamodb"
+      ],
+      "severity": "LOW",
+      "status": "planned",
+      "rule": null,
+      "notes": "Pointer toward erasure duties only; deletion triggers are a business process.",
+      "profile": "baseline"
+    }
+  ],
+  "obligations": [
+    {
+      "id": "DPDP-S8-5",
+      "framework": "DPDP Act 2023",
+      "citation": "Section 8(5)",
+      "title": "Reasonable security safeguards to prevent personal data breach",
+      "in_force": "upcoming",
+      "effective_note": "Main obligations follow an 18-month transition from the 13 Nov 2025 notification of the Rules (about 13 May 2027). Confirm commencement against the gazette.",
+      "applies_to": [
+        "all data fiduciaries and processors handling digital personal data"
+      ],
+      "checks": [
+        "public_storage",
+        "encryption_at_rest",
+        "wildcard_permission",
+        "mfa_required",
+        "open_admin_ports",
+        "cloudtrail_enabled"
+      ],
+      "coverage": "partial",
+      "verification": "secondary",
+      "notes": "The Act sets the duty; the technical measures are specified in Rule 6 of the DPDP Rules, listed below.",
+      "sources": [
+        "https://ksandk.com/data-protection-and-data-privacy/dpdp-rule-6-and-indias-new-cybersecurity-compliance-standard/"
+      ]
+    },
+    {
+      "id": "DPDP-R6-ENC",
+      "framework": "DPDP Rules 2025",
+      "citation": "Rule 6 (encryption / obfuscation / tokenisation)",
+      "title": "Protect personal data with encryption or equivalent",
+      "in_force": "upcoming",
+      "applies_to": [
+        "data fiduciaries"
+      ],
+      "checks": [
+        "encryption_at_rest",
+        "tls_enforcement"
+      ],
+      "coverage": "partial",
+      "verification": "secondary",
+      "notes": "Configuration shows encryption is enabled; it does not show key management or tokenisation practice.",
+      "sources": [
+        "https://www.dpdpa.com/dpdparules/rule6.html"
+      ]
+    },
+    {
+      "id": "DPDP-R6-ACCESS",
+      "framework": "DPDP Rules 2025",
+      "citation": "Rule 6 (access control)",
+      "title": "Control access to computer resources used for processing",
+      "in_force": "upcoming",
+      "applies_to": [
+        "data fiduciaries"
+      ],
+      "checks": [
+        "wildcard_permission",
+        "mfa_required",
+        "root_mfa",
+        "stale_access_keys",
+        "open_admin_ports",
+        "public_storage"
+      ],
+      "coverage": "partial",
+      "verification": "secondary",
+      "sources": [
+        "https://www.scconline.com/blog/post/2025/12/26/digital-personal-data-protection-rules-2025-key-highlights/"
+      ]
+    },
+    {
+      "id": "DPDP-R6-LOG",
+      "framework": "DPDP Rules 2025",
+      "citation": "Rule 6 (logging, monitoring, one-year retention)",
+      "title": "Visibility on access, logs and monitoring; retain logs and personal data for one year",
+      "in_force": "upcoming",
+      "applies_to": [
+        "data fiduciaries",
+        "data processors"
+      ],
+      "checks": [
+        "cloudtrail_enabled",
+        "vpc_flow_logs",
+        "s3_access_logging",
+        "log_retention_365d",
+        "threat_detection_enabled"
+      ],
+      "coverage": "partial",
+      "verification": "secondary",
+      "notes": "Summaries say retention is one year unless another law requires longer. The interaction with CERT-In's 180-day minimum should be confirmed with the primary text.",
+      "sources": [
+        "https://www.dpdpa.com/dpdparules/rule6.html",
+        "https://www.mondaq.com/india/data-protection/1708164/digital-personal-data-protection-rules-2025-notified"
+      ]
+    },
+    {
+      "id": "DPDP-R6-BACKUP",
+      "framework": "DPDP Rules 2025",
+      "citation": "Rule 6 (continuity / backups)",
+      "title": "Measures for continued processing despite compromise, such as backups",
+      "in_force": "upcoming",
+      "applies_to": [
+        "data fiduciaries"
+      ],
+      "checks": [
+        "backup_enabled",
+        "s3_versioning"
+      ],
+      "coverage": "partial",
+      "verification": "needs-verification",
+      "notes": "Backup wording was seen in some summaries only. Confirm against the gazette."
+    },
+    {
+      "id": "DPDP-R7",
+      "framework": "DPDP Rules 2025",
+      "citation": "Rule 7 (personal data breach intimation)",
+      "title": "Notify the Board and affected persons of a breach",
+      "in_force": "upcoming",
+      "applies_to": [
+        "data fiduciaries"
+      ],
+      "checks": [
+        "threat_detection_enabled"
+      ],
+      "coverage": "partial",
+      "verification": "needs-verification",
+      "notes": "Summaries mention a 72-hour detailed report to the Board; deadline and content not verified. Only detection capability can be checked; notification itself is a process obligation."
+    },
+    {
+      "id": "DPDP-S8-7",
+      "framework": "DPDP Act 2023",
+      "citation": "Section 8(7)",
+      "title": "Erase personal data when purpose is served or consent withdrawn",
+      "in_force": "upcoming",
+      "applies_to": [
+        "data fiduciaries"
+      ],
+      "checks": [
+        "retention_lifecycle"
+      ],
+      "coverage": "partial",
+      "verification": "needs-verification",
+      "notes": "Cloud config can show a lifecycle policy exists, not that deletion happens when required."
+    },
+    {
+      "id": "DPDP-S16",
+      "framework": "DPDP Act 2023",
+      "citation": "Section 16 (transfer outside India)",
+      "title": "Cross-border transfers allowed except to restricted countries",
+      "in_force": "upcoming",
+      "applies_to": [
+        "data fiduciaries"
+      ],
+      "checks": [
+        "data_residency_india"
+      ],
+      "coverage": "partial",
+      "verification": "needs-verification",
+      "notes": "The Act permits transfers unless the Government restricts a country, so this is a review pointer, not a violation by itself. Sector rules (RBI, SEBI, IRDAI) can be stricter. Significant Data Fiduciaries may face further localisation requirements."
+    },
+    {
+      "id": "DPDP-MANUAL",
+      "framework": "DPDP Act 2023 and Rules 2025",
+      "citation": "Consent (s.6), notice (s.5), children's data (s.9), grievance redressal (s.8(10)), processor contracts (s.8(2)), Significant Data Fiduciary duties (s.10)",
+      "title": "Obligations that cannot be assessed from cloud configuration",
+      "in_force": "upcoming",
+      "applies_to": [
+        "data fiduciaries"
+      ],
+      "checks": [],
+      "coverage": "manual-only",
+      "verification": "needs-verification",
+      "notes": "List these in every report as 'not assessed'. Section numbers here are from memory and must be confirmed."
+    },
+    {
+      "id": "CERTIN-LOGS-180",
+      "framework": "CERT-In Directions 28 April 2022",
+      "citation": "Direction on ICT system logs",
+      "title": "Enable logs for ICT systems and retain them for a rolling 180 days within India",
+      "in_force": "in_force",
+      "effective_note": "Effective 27 June 2022 per most summaries (one gives 28 June).",
+      "applies_to": [
+        "service providers",
+        "intermediaries",
+        "data centres",
+        "body corporates",
+        "government organisations"
+      ],
+      "checks": [
+        "cloudtrail_enabled",
+        "vpc_flow_logs",
+        "log_retention_180d",
+        "log_location_india"
+      ],
+      "coverage": "partial",
+      "verification": "secondary",
+      "sources": [
+        "https://khaitanco.com/sites/default/files/2022-04/Ergo_30042022.pdf",
+        "https://ankura.com/insights/everything-you-need-to-know-about-india-s-new-guidelines-related-to-cyber-incident-reporting-by-cert-in"
+      ]
+    },
+    {
+      "id": "CERTIN-REPORT-6H",
+      "framework": "CERT-In Directions 28 April 2022",
+      "citation": "Direction on incident reporting",
+      "title": "Report specified cyber incidents to CERT-In within six hours of noticing them",
+      "in_force": "in_force",
+      "applies_to": [
+        "same as above"
+      ],
+      "checks": [
+        "threat_detection_enabled"
+      ],
+      "coverage": "partial",
+      "verification": "secondary",
+      "notes": "Process obligation. PolicyGuard can show alerting exists and could display an incident clock; it cannot file the report.",
+      "sources": [
+        "https://www.lawrbit.com/article/new-cyber-security-directions-by-cert-in/"
+      ]
+    },
+    {
+      "id": "CERTIN-NTP",
+      "framework": "CERT-In Directions 28 April 2022",
+      "citation": "Direction on time synchronisation",
+      "title": "Synchronise system clocks to the specified NTP sources",
+      "in_force": "in_force",
+      "applies_to": [
+        "same as above"
+      ],
+      "checks": [],
+      "coverage": "manual-only",
+      "verification": "needs-verification",
+      "notes": "Exact requirement not confirmed. Instance-level, so would need Systems Manager or an agent; not visible through the core AWS APIs used today."
+    },
+    {
+      "id": "RBI-PAYMENT-LOCAL",
+      "framework": "RBI payment data storage directions (2018, clarified 2021)",
+      "citation": "Storage of Payment System Data",
+      "title": "Payment system data stored only in India",
+      "in_force": "in_force",
+      "applies_to": [
+        "payment system operators and their service providers"
+      ],
+      "checks": [
+        "data_residency_india",
+        "log_location_india"
+      ],
+      "coverage": "partial",
+      "verification": "needs-verification",
+      "notes": "One source reports RBI later allowed some processing abroad under conditions. Check the current direction before enabling this as a violation."
+    },
+    {
+      "id": "SEBI-CLOUD-CSCRF",
+      "framework": "SEBI Cloud Framework (2023) and CSCRF",
+      "citation": "Data localisation, logging, access control and backup baselines",
+      "title": "Cloud and cyber-resilience controls for SEBI regulated entities",
+      "in_force": "in_force",
+      "applies_to": [
+        "SEBI regulated entities"
+      ],
+      "checks": [
+        "data_residency_india",
+        "log_location_india",
+        "mfa_required",
+        "wildcard_permission",
+        "backup_enabled",
+        "cloudtrail_enabled"
+      ],
+      "coverage": "partial",
+      "verification": "needs-verification",
+      "notes": "Sources disagree on the CSCRF compliance deadline. Apply only when the entity type is SEBI-regulated."
+    },
+    {
+      "id": "IRDAI-CYBER",
+      "framework": "IRDAI Information and Cyber Security Guidelines (2023)",
+      "citation": "Localisation of policy and claims data; logging",
+      "title": "Insurance data and logs kept in India",
+      "in_force": "in_force",
+      "applies_to": [
+        "IRDAI regulated entities"
+      ],
+      "checks": [
+        "data_residency_india",
+        "log_location_india",
+        "log_retention_180d"
+      ],
+      "coverage": "partial",
+      "verification": "needs-verification",
+      "notes": "The 180-day log figure came from a single unconfirmed source."
+    },
+    {
+      "id": "ITACT-43A",
+      "framework": "IT Act 2000 s.43A and SPDI Rules 2011",
+      "citation": "Reasonable security practices",
+      "title": "Body corporate must maintain reasonable security practices for sensitive personal data",
+      "in_force": "in_force",
+      "applies_to": [
+        "body corporates handling sensitive personal data"
+      ],
+      "checks": [
+        "encryption_at_rest",
+        "tls_enforcement",
+        "mfa_required",
+        "wildcard_permission",
+        "cloudtrail_enabled",
+        "backup_enabled"
+      ],
+      "coverage": "partial",
+      "verification": "needs-verification",
+      "notes": "Commonly shown through ISO 27001. Expected to be superseded in part as DPDP provisions commence; confirm the transition."
+    }
+  ]
+}

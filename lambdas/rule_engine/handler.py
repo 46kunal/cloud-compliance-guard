@@ -52,6 +52,23 @@ def _policy_allows_anyone(policy: dict) -> bool:
     return False
 
 
+def _policy_denies_insecure_transport(policy: dict) -> bool:
+    """True if the policy has a Deny for everyone when aws:SecureTransport is false."""
+    statements = policy.get("Statement", [])
+    if isinstance(statements, dict):
+        statements = [statements]
+    for s in statements:
+        if s.get("Effect") != "Deny":
+            continue
+        principal = s.get("Principal")
+        anyone = principal == "*" or (isinstance(principal, dict) and principal.get("AWS") in ("*", ["*"]))
+        condition = (s.get("Condition") or {}).get("Bool", {})
+        transport = condition.get("aws:SecureTransport", condition.get("aws:securetransport"))
+        if anyone and str(transport).lower() == "false":
+            return True
+    return False
+
+
 def _record_collection(report, service, status="SUCCESS", error=None):
     """Accumulate collector health without changing the collector's resource return contract."""
     if report is None:
@@ -130,6 +147,26 @@ def get_normalized_s3_resources(collection_report=None) -> list:
                     resource_complete = False
                 encrypted = False
 
+            extra = {}
+            try:
+                location = s3_client.get_bucket_location(Bucket=bucket_name).get("LocationConstraint")
+                extra["region"] = {None: "us-east-1", "": "us-east-1", "EU": "eu-west-1"}.get(location, location)
+            except Exception as e:
+                _record_collection(collection_report, "s3", "PARTIAL", f"Bucket location could not be read: {e}")
+            try:
+                policy_doc = json.loads(s3_client.get_bucket_policy(Bucket=bucket_name)["Policy"])
+                extra["tls_enforced"] = _policy_denies_insecure_transport(policy_doc)
+            except Exception as e:
+                if _permission_or_api_failure(e, ("NoSuchBucketPolicy",)):
+                    _record_collection(collection_report, "s3", "PARTIAL", f"Bucket policy for TLS check could not be read: {e}")
+                else:
+                    extra["tls_enforced"] = False
+            try:
+                versioning = s3_client.get_bucket_versioning(Bucket=bucket_name)
+                extra["versioning_enabled"] = versioning.get("Status") == "Enabled"
+            except Exception as e:
+                _record_collection(collection_report, "s3", "PARTIAL", f"Bucket versioning could not be read: {e}")
+
             tags = {}
             try:
                 tag_res = s3_client.get_bucket_tagging(Bucket=bucket_name)
@@ -149,6 +186,7 @@ def get_normalized_s3_resources(collection_report=None) -> list:
                 "permissions": [],
                 "tags": tags,
                 "_collection_complete": resource_complete,
+                **extra,
             })
     except Exception as e:
         _record_collection(collection_report, "s3", "FAILED", e)
@@ -269,6 +307,7 @@ def get_normalized_ec2_resources(collection_report=None) -> list:
                 "provider": "aws",
                 "resource_id": sg_id,
                 "group_name": sg.get("GroupName"),
+                "region": region,
                 "is_public": False,
                 "encrypted": True,
                 "permissions": ip_permissions,
@@ -281,6 +320,35 @@ def get_normalized_ec2_resources(collection_report=None) -> list:
     _record_collection(collection_report, "ec2")
 
     return resources
+
+
+def _collect_logging_and_detection(region, collection_report):
+    """Account-level facts for the India profile: log-group retention and GuardDuty status.
+    A failed call leaves its key out, so the matching rule is skipped rather than guessing."""
+    extra = {}
+    try:
+        logs = boto3.client("logs", region_name=region)
+        short = []
+        for page in logs.get_paginator("describe_log_groups").paginate():
+            for group in page.get("logGroups", []):
+                days = group.get("retentionInDays")
+                if days is not None and days < 365:
+                    short.append({"name": group.get("logGroupName"), "days": days})
+        extra["short_retention_log_groups"] = short
+    except Exception as e:
+        _record_collection(collection_report, "cloudtrail", "PARTIAL", f"Log group retention could not be read: {e}")
+    try:
+        client = boto3.client("guardduty", region_name=region)
+        detectors = client.list_detectors().get("DetectorIds", [])
+        enabled = False
+        for detector_id in detectors:
+            if client.get_detector(DetectorId=detector_id).get("Status") == "ENABLED":
+                enabled = True
+                break
+        extra["guardduty_enabled"] = enabled
+    except Exception as e:
+        _record_collection(collection_report, "cloudtrail", "PARTIAL", f"GuardDuty status could not be read: {e}")
+    return extra
 
 
 def get_normalized_cloudtrail_resources(collection_report=None) -> list:
@@ -303,6 +371,7 @@ def get_normalized_cloudtrail_resources(collection_report=None) -> list:
                 active = True
                 break
 
+        extra = _collect_logging_and_detection(region, collection_report)
         _record_collection(collection_report, "cloudtrail")
         return [{
             "resource_type": "cloudtrail_config",
@@ -314,6 +383,7 @@ def get_normalized_cloudtrail_resources(collection_report=None) -> list:
             "tags": {},
             "trail_count": len(trails),
             "active_multi_region_trail": active,
+            **extra,
         }]
     except Exception as e:
         _record_collection(collection_report, "cloudtrail", "FAILED", e)
@@ -368,12 +438,22 @@ def _get_rule_modules():
     return rule_modules
 
 
+def active_profile() -> str:
+    """'baseline' = CIS-style rules only; 'india' = baseline plus the India-specific rules."""
+    return os.environ.get("POLICYGUARD_PROFILE", "baseline").strip().lower()
+
+
+def _rule_enabled(rule_mod) -> bool:
+    required = getattr(rule_mod, "PROFILE", "baseline")
+    return required == "baseline" or active_profile() == required
+
+
 def run_rule_engine(resources: list) -> list:
     """
     Runs all rule modules against the provided list of normalized resources.
     Returns a list of violation dictionaries.
     """
-    rule_modules = _get_rule_modules()
+    rule_modules = [m for m in _get_rule_modules() if _rule_enabled(m)]
     violations = []
 
     for resource in resources:

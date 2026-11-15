@@ -28,6 +28,30 @@ RULE_DETAILS = {
         "active_multi_region_trail", True,
         "The collector did not observe an active multi-region CloudTrail trail.",
     ),
+    "data_residency_india": (
+        "region", "an Indian region (ap-south-1 or ap-south-2)",
+        "The resource is located outside the Indian AWS regions. This is a review pointer toward data-localisation duties, not a legal finding.",
+    ),
+    "tls_enforcement": (
+        "tls_enforced", True,
+        "The bucket policy does not deny requests made without TLS (aws:SecureTransport=false).",
+    ),
+    "log_retention_180d": (
+        "short_retention_log_groups", "log retention of at least 180 days",
+        "One or more CloudWatch log groups expire log events in fewer than 180 days.",
+    ),
+    "log_retention_365d": (
+        "short_retention_log_groups", "log retention of at least 365 days",
+        "One or more CloudWatch log groups expire log events in fewer than 365 days.",
+    ),
+    "s3_versioning": (
+        "versioning_enabled", True,
+        "Versioning is not enabled on the bucket, so overwritten or deleted objects cannot be recovered.",
+    ),
+    "threat_detection_enabled": (
+        "guardduty_enabled", True,
+        "No enabled GuardDuty detector was found in the scanned region.",
+    ),
 }
 
 SERVICE_BY_TYPE = {
@@ -41,6 +65,12 @@ RULE_GUIDANCE = {
     "mfa_required": "Enable an MFA device for the IAM user's console access.",
     "open_admin_ports": "Restrict SSH/RDP ingress to approved source ranges.",
     "cloudtrail_enabled": "Enable an actively logging multi-region CloudTrail trail.",
+    "data_residency_india": "Review whether this resource should be moved to ap-south-1 or ap-south-2, considering the data it holds and any sector rules that apply.",
+    "tls_enforcement": "Add a bucket policy statement that denies all requests where aws:SecureTransport is false.",
+    "log_retention_180d": "Set the log group retention to at least 180 days (or never expire) for logs in scope.",
+    "log_retention_365d": "Set the log group retention to at least 365 days (or never expire) for logs in scope.",
+    "s3_versioning": "Enable versioning on the bucket, and consider MFA delete or object lock for critical data.",
+    "threat_detection_enabled": "Enable Amazon GuardDuty and route high-severity findings to an alert channel.",
 }
 
 SENSITIVE_KEY_PARTS = ("secret", "password", "credential", "accesskey", "token", "privatekey")
@@ -60,9 +90,15 @@ def _safe_value(value, key=""):
 
 
 def _observed(rule, resource):
-    if rule in ("public_storage", "encryption_at_rest", "cloudtrail_enabled"):
+    if rule in ("public_storage", "encryption_at_rest", "cloudtrail_enabled", "data_residency_india",
+                "tls_enforcement", "s3_versioning", "threat_detection_enabled"):
         key = RULE_DETAILS[rule][0]
         return {key: resource.get(key)}
+    if rule in ("log_retention_180d", "log_retention_365d"):
+        minimum = 180 if rule == "log_retention_180d" else 365
+        groups = resource.get("short_retention_log_groups") or []
+        return {"log_groups_below_minimum": [g for g in groups if isinstance(g, dict) and g.get("days", minimum) < minimum],
+                "minimum_days": minimum}
     if rule == "mfa_required":
         return {"has_console_access": resource.get("has_console_access"),
                 "mfa_enabled": resource.get("mfa_enabled")}
@@ -127,6 +163,9 @@ def build_evidence_records(classified, resources, scan_id, detected_at, account_
             "public_storage": ("is_public",), "encryption_at_rest": ("encrypted",),
             "wildcard_permission": ("permissions",), "mfa_required": ("has_console_access", "mfa_enabled"),
             "open_admin_ports": ("permissions",), "cloudtrail_enabled": ("active_multi_region_trail",),
+            "data_residency_india": ("region",), "tls_enforcement": ("tls_enforced",),
+            "log_retention_180d": ("short_retention_log_groups",), "log_retention_365d": ("short_retention_log_groups",),
+            "s3_versioning": ("versioning_enabled",), "threat_detection_enabled": ("guardduty_enabled",),
         }[rule]
         collection_status = "COLLECTED" if all(key in resource for key in required_keys) else "PARTIAL"
         if collection_status == "PARTIAL":
