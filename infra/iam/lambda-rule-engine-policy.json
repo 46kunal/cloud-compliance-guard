@@ -31,8 +31,14 @@
         "cloudtrail:DescribeTrails",
         "cloudtrail:GetTrailStatus",
         "ec2:DescribeSecurityGroups",
+        "guardduty:GetDetector",
+        "guardduty:ListDetectors",
+        "logs:DescribeLogGroups",
+        "s3:GetBucketLocation",
         "s3:GetBucketPolicy",
-        "s3:GetBucketTagging"
+        "s3:GetBucketTagging",
+        "s3:GetBucketVersioning",
+        "sts:GetCallerIdentity"
       ],
       "Resource": "*"
     },
