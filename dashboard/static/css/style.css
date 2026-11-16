@@ -45,6 +45,8 @@
 }
 
 * { box-sizing: border-box; }
+/* Component classes set display, which would otherwise beat the [hidden] attribute (a hidden button would still show). */
+[hidden] { display: none !important; }
 html { color-scheme: light dark; }
 body { margin: 0; font: 15px/1.55 var(--sans); background: var(--bg); color: var(--text); font-variant-numeric: tabular-nums; }
 h1, h2, h3, h4 { line-height: 1.2; margin: 0 0 .4em; font-family: var(--serif); font-weight: 500; letter-spacing: -.005em; }
@@ -237,8 +239,32 @@ td.mono { word-break: break-all; min-width: 130px; }
 .print-page th { background: #f0f0f0; color: #333; }
 @media print { .no-print { display: none !important; } .print-page { padding: 0; } .banner { border: 1px solid #999; background: none; color: #111; } }
 
+/* AWS account chip (top bar) and account page */
+.account-chip { display: flex; align-items: center; gap: .5rem; padding: .3rem .7rem; border: 1px solid var(--text); color: var(--text); text-decoration: none; background: var(--surface); }
+.account-chip:hover { background: color-mix(in srgb, var(--hi) 30%, transparent); }
+.account-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+.account-chip[data-state="default"] .account-dot, .account-chip[data-state="session"] .account-dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+.account-chip[data-state="none"] .account-dot { background: var(--bad); }
+.account-chip[data-state="unknown"] .account-dot { background: var(--medium); }
+.account-label { font: 600 .64rem var(--mono); letter-spacing: .12em; color: var(--muted); }
+.account-id { font: 500 .88rem var(--mono); }
+.account-region { font: .72rem var(--mono); color: var(--muted); }
+.account-now-body { display: grid; grid-template-columns: minmax(240px, 1fr) 2fr; gap: 1.5rem 2rem; align-items: start; }
+.account-big { font: 400 clamp(1.7rem, 3vw, 2.6rem)/1.1 var(--serif); letter-spacing: .02em; margin: 0; word-break: break-all; }
+.kv { display: grid; grid-template-columns: 8rem 1fr; gap: .5rem 1rem; margin: 0; }
+.kv dt { font: 600 .68rem var(--mono); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); padding-top: .2rem; }
+.kv dd { margin: 0; word-break: break-all; }
+.account-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.1rem; }
+.account-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem 1.25rem; align-items: end; }
+.account-form .full { grid-column: 1 / -1; }
+.btn-danger { border-color: var(--bad); color: var(--bad); }
+.btn-danger:hover { background: var(--bad-soft); }
+.banner-ok { background: var(--ok-soft); color: var(--ok); }
+
 /* Responsive */
 @media (max-width: 860px) {
+  .account-label, .account-region { display: none; }
+  .account-now-body { grid-template-columns: 1fr; }
   .shell { grid-template-columns: 1fr; }
   .sidebar { position: fixed; inset: 0 auto 0 0; width: 250px; transform: translateX(-100%); transition: transform .2s; z-index: 40; height: 100vh; }
   .sidebar.open { transform: none; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .45); }

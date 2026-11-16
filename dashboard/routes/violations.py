@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify
 import re
 
 from compliance.catalog import obligations_for_rule
+from dashboard.account import in_scope, visible_scope
 from db.store import connect, get_finding, get_finding_evidence, get_findings, get_violations
 
 violations_bp = Blueprint("violations", __name__)
@@ -11,7 +12,7 @@ violations_bp = Blueprint("violations", __name__)
 def list_violations():
     conn = connect()
     try:
-        return jsonify(get_violations(conn))
+        return jsonify(in_scope(get_violations(conn), visible_scope(conn)))
     finally:
         conn.close()
 
@@ -20,7 +21,7 @@ def list_violations():
 def list_findings():
     conn = connect()
     try:
-        findings = get_findings(conn)
+        findings = in_scope(get_findings(conn), visible_scope(conn))
         for finding in findings:
             finding["obligations"] = obligations_for_rule(finding["rule"])
         return jsonify(findings)

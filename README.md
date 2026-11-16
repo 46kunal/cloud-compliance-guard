@@ -127,6 +127,20 @@ python infra/demo_resources.py delete      # clean up
 
 Step-by-step presenter notes: [`demo/demo_script.md`](demo/demo_script.md). Lambda/Config deployment and live-remediation steps: [`infra/setup_notes.md`](infra/setup_notes.md).
 
+### Switching the monitored AWS account
+
+The top bar always shows which AWS account is being scanned (for example `651980296015 · us-east-1`). Click it, or open
+**AWS account** in the menu, to:
+
+* see the account, its identity, the region and where the credentials come from;
+* **connect another account** by entering its access keys (they are checked with AWS first) and switch between the
+  accounts you have connected;
+* **log out** of an account (scans pause until you connect one again) or return to the default credentials.
+
+Only admins can change the account. Keys typed here are kept in the server's memory only, never written to disk or the
+database, and are forgotten when the server restarts. Once two accounts have scan history, every page shows only the active
+account's findings. On the AWS deployment the account is fixed by the scanner's IAM role and the page is read-only.
+
 ---
 
 ## 6. Compliance frameworks
@@ -151,6 +165,7 @@ Each finding gets exactly one citation from exactly one tier, chosen at scan tim
 Stated up front so nothing here is a surprise:
 
 * **One set of credentials does everything.** Locally the same IAM user scans and remediates. Separate least-privilege policies exist in `infra/iam/` for the Lambdas, but the local demo does not use that split.
+* **Accounts entered in the dashboard are not persistent.** Keys typed into the AWS account page live in server memory only (by design) and are lost on restart. Access keys are long-lived secrets: use read-only keys, or better an IAM role.
 * **AWS only, one region.** S3 and IAM are account-wide, but security groups and CloudTrail are checked only in the configured region. No Azure/GCP, no multi-account.
 * **DPDP classification is tag-driven, not inferred.** Someone must tag each resource `handles_personal_data=true`; PolicyGuard does not look inside buckets. IAM users, security groups and CloudTrail are untagged, so their findings always fall under CIS (Tier 2).
 * **Encryption rule is stricter than AWS's default.** It requires SSE-KMS, so buckets using the default SSE-S3 are reported (a deliberate choice; the auto-fix applies SSE-KMS).

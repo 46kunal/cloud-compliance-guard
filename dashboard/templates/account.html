@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="account-msg" class="banner banner-bad" role="alert" hidden></div>
+
+<section class="panel" aria-labelledby="now-title">
+  <div class="panel-head"><h2 id="now-title">Monitoring now</h2><span id="now-state"></span></div>
+  <div class="account-now-body">
+    <div>
+      <p class="kpi-label">AWS account</p>
+      <p class="account-big" id="now-id">–</p>
+    </div>
+    <dl class="kv">
+      <dt>Identity</dt><dd id="now-arn">–</dd>
+      <dt>Region</dt><dd id="now-region">–</dd>
+      <dt>Credentials</dt><dd id="now-source">–</dd>
+    </dl>
+  </div>
+  <div class="account-actions" id="now-actions" hidden>
+    <button id="btn-disconnect" class="btn btn-danger" type="button">Log out of this AWS account</button>
+    <button id="btn-default" class="btn" type="button" hidden>Use default credentials</button>
+  </div>
+  <p class="hint" id="now-note"></p>
+</section>
+
+<section class="panel" aria-labelledby="list-title" style="margin-top:1.25rem">
+  <div class="panel-head"><h2 id="list-title">Accounts connected in this dashboard</h2></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Account ID</th><th>Identity</th><th>Region</th><th>Key</th><th>Connected</th><th>Status</th><th></th></tr></thead>
+      <tbody id="account-rows"><tr><td colspan="7">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel" id="connect-panel" aria-labelledby="connect-title" style="margin-top:1.25rem">
+  <div class="panel-head"><h2 id="connect-title">Connect another AWS account</h2></div>
+  <p class="hint" id="connect-blocked" hidden></p>
+  <form id="connect-form" class="account-form" autocomplete="off">
+    <label class="field"><span>Access key ID</span>
+      <input id="f-key" name="access_key_id" type="text" maxlength="20" required spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="AKIA…">
+    </label>
+    <label class="field"><span>Secret access key</span>
+      <input id="f-secret" name="secret_access_key" type="password" maxlength="40" required spellcheck="false" autocomplete="off">
+    </label>
+    <label class="field"><span>Session token (temporary keys only)</span>
+      <input id="f-token" name="session_token" type="password" spellcheck="false" autocomplete="off">
+    </label>
+    <label class="field"><span>Region</span>
+      <select id="f-region" name="region"></select>
+    </label>
+    <div class="full">
+      <button id="btn-connect" class="btn btn-primary" type="submit">Verify with AWS and monitor this account</button>
+    </div>
+  </form>
+  <p class="fw-note">Keys are checked with AWS, then kept in this server's memory only. They are never written to disk or the
+    database, and they are forgotten when the server restarts. Use read-only keys (see
+    <code>infra/iam/policyguard-dev-user-policy.json</code>). On the AWS deployment this page is read-only and the account
+    comes from an IAM role.</p>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/account.js') }}"></script>{% endblock %}

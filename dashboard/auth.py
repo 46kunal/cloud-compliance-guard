@@ -27,6 +27,8 @@ ENDPOINT_ROLES = {
     "audit": "auditor", "audit_log.audit_log": "auditor", "violations.finding_evidence": "auditor",
     "scan_now": "admin", "reports": "auditor", "insight.export_csv": "auditor",
     "insight.export_bundle": "auditor", "insight.saved_reports": "auditor", "insight.printable_report": "auditor",
+    "account_api.connect": "admin", "account_api.switch": "admin", "account_api.disconnect": "admin",
+    "account_api.use_default": "admin",
 }
 
 _failures = {}  # ip -> [timestamps]; per process, a brake against guessing, not a full defence
@@ -147,7 +149,7 @@ def login():
     if not user:
         _register_failure(ip)
         return render_template("login.html", error="Incorrect username or password.", mode=auth_mode(),
-                               csrf=csrf_token(), challenge=False), 401
+                               csrf=csrf_token(), challenge=False, username=username), 401
     _start_session(user)
     return redirect(url_for("index"))
 

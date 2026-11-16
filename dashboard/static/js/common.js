@@ -74,11 +74,37 @@ async function getCsrf() {
   return csrfTokenValue;
 }
 
-async function postJson(url) {
-  const res = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "X-CSRF-Token": await getCsrf() } });
+// body is optional; when given it is sent as JSON. Server error messages (detail/error) are surfaced to the user.
+async function postJson(url, body) {
+  const headers = { "X-CSRF-Token": await getCsrf() };
+  const options = { method: "POST", credentials: "same-origin", headers };
+  if (body !== undefined) { headers["Content-Type"] = "application/json"; options.body = JSON.stringify(body); }
+  const res = await fetch(url, options);
   if (res.status === 401) { window.location.href = "/login"; throw new Error("Signed out"); }
-  if (!res.ok) throw new Error(url + " returned " + res.status);
+  if (!res.ok) {
+    const message = await res.json().then((data) => data && (data.detail || data.error), () => null);
+    throw new Error(message || url + " returned " + res.status);
+  }
   return res.json();
+}
+
+// The top-bar chip that always shows which AWS account is being monitored.
+async function refreshAccountChip() {
+  const chip = document.getElementById("account-chip");
+  if (!chip) return;
+  try {
+    const { current } = await getJson("/api/account");
+    const live = current.connected;
+    chip.dataset.state = live ? current.state : "none";
+    chip.querySelector(".account-id").textContent = live ? current.account_id : "No account";
+    chip.querySelector(".account-region").textContent = live ? current.region : "disconnected";
+    chip.setAttribute("aria-label", live
+      ? "Monitoring AWS account " + current.account_id + " in " + current.region + ". Open the AWS account page."
+      : "No AWS account connected. Open the AWS account page.");
+    chip.title = live ? (current.arn || "") : (current.message || "");
+  } catch (err) {
+    if (err.message !== "Signed out") chip.dataset.state = "unknown";
+  }
 }
 
 // ---------- small SVG charts (no external library, works offline) ----------
@@ -194,6 +220,7 @@ function initShell() {
   document.querySelectorAll("[data-nav]").forEach((link) => {
     if (link.dataset.nav === page) link.setAttribute("aria-current", "page");
   });
+  refreshAccountChip();
   const themeBtn = document.getElementById("theme-btn");
   if (themeBtn) themeBtn.addEventListener("click", () => {
     const explicit = document.documentElement.getAttribute("data-theme");

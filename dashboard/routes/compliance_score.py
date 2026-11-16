@@ -2,7 +2,8 @@ from collections import Counter
 
 from flask import Blueprint, jsonify
 
-from db.store import connect, get_last_scan_time, get_latest_scan, get_scan_assessed_resource_ids, get_violations
+from dashboard.account import in_scope, latest_scan_in_scope, visible_scope
+from db.store import connect, get_last_scan_time, get_scan_assessed_resource_ids, get_violations
 
 compliance_score_bp = Blueprint("compliance_score", __name__)
 
@@ -20,10 +21,11 @@ def compute_score(violations: list, resources_scanned: int):
 def compliance_score():
     conn = connect()
     try:
-        violations = get_violations(conn)
-        scan = get_latest_scan(conn)
+        scope = visible_scope(conn)
+        violations = in_scope(get_violations(conn), scope)
+        scan = latest_scan_in_scope(conn, scope)
         resources_assessed = int(scan["resources_assessed"] or 0) if scan else 0
-        last_scan = get_last_scan_time(conn)
+        last_scan = get_last_scan_time(conn) if scope is None else (scan or {}).get("completed_at")
         assessed_resources = get_scan_assessed_resource_ids(conn, scan["id"]) if scan else set()
     finally:
         conn.close()

@@ -347,7 +347,11 @@ def _collect_logging_and_detection(region, collection_report):
                 break
         extra["guardduty_enabled"] = enabled
     except Exception as e:
-        _record_collection(collection_report, "cloudtrail", "PARTIAL", f"GuardDuty status could not be read: {e}")
+        if getattr(e, "response", {}).get("Error", {}).get("Code") == "SubscriptionRequiredException":
+            # The account never subscribed to GuardDuty: threat detection is off. That is the finding, not a read error.
+            extra["guardduty_enabled"] = False
+        else:
+            _record_collection(collection_report, "cloudtrail", "PARTIAL", f"GuardDuty status could not be read: {e}")
     return extra
 
 

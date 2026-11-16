@@ -8,6 +8,7 @@ from datetime import datetime
 from flask import Blueprint, Response, jsonify, render_template
 
 from compliance.catalog import framework_summary, load_catalog, obligations_for_rule
+from dashboard.account import in_scope, latest_scan_in_scope, visible_scope
 from dashboard.instance import instance_info
 from db.store import (backend_name, connect, get_finding_evidence, get_findings, get_latest_scan, get_scans,
                       get_violations)
@@ -41,7 +42,7 @@ def _with_store(fn):
 
 @insight_bp.route("/api/frameworks")
 def frameworks():
-    open_findings = _with_store(get_violations)
+    open_findings = _with_store(lambda conn: in_scope(get_violations(conn), visible_scope(conn)))
     catalog = load_catalog()
     return jsonify({
         "catalog_version": catalog["catalog_version"], "last_reviewed": catalog["last_reviewed"],
@@ -52,7 +53,7 @@ def frameworks():
 
 @insight_bp.route("/api/scans")
 def scans():
-    rows = _with_store(lambda conn: get_scans(conn, 60))
+    rows = _with_store(lambda conn: in_scope(get_scans(conn, 60), visible_scope(conn)))
     return jsonify([{
         "id": s["id"], "status": s["status"], "started_at": s.get("started_at"), "completed_at": s.get("completed_at"),
         "duration_seconds": _duration_seconds(s), "resources_discovered": s.get("resources_discovered"),
@@ -92,7 +93,8 @@ def _autoscaling_summary():
 
 def _cost_model(scans_list):
     interval = int(os.environ.get("POLICYGUARD_SCAN_INTERVAL_MINUTES", "15"))
-    durations = [d for d in (_duration_seconds(s) for s in scans_list) if d is not None]
+    # Legacy scans were recorded before timings existed (start == end), so they would drag the average to ~0 s.
+    durations = [d for d in (_duration_seconds(s) for s in scans_list) if d is not None and d > 0]
     avg = sum(durations) / len(durations) if durations else None
     runs_per_month = int(30 * 24 * 60 / interval)
     if avg is None:
@@ -112,8 +114,8 @@ def _cost_model(scans_list):
 
 @insight_bp.route("/api/usage")
 def usage():
-    scans_list = _with_store(lambda conn: get_scans(conn, 500))
-    completed = [s for s in scans_list if s["status"] in ("COMPLETED", "PARTIAL")]
+    scans_list = _with_store(lambda conn: in_scope(get_scans(conn, 500), visible_scope(conn)))
+    completed = [s for s in scans_list if s["status"] in ("COMPLETED", "PARTIAL") and s.get("account_scope") != "legacy"]
     return jsonify({
         "scans_recorded": len(scans_list), "scans_completed": len(completed),
         "instance": instance_info(), "storage_backend": backend_name(),
@@ -128,7 +130,7 @@ def _csv_safe(value):
 
 @insight_bp.route("/api/export/findings.csv")
 def export_csv():
-    rows = _with_store(get_findings)
+    rows = _with_store(lambda conn: in_scope(get_findings(conn), visible_scope(conn)))
     out = io.StringIO()
     writer = csv.writer(out)
     writer.writerow(["id", "status", "severity", "rule", "resource_type", "resource_id", "account_scope",
@@ -143,8 +145,9 @@ def export_csv():
 
 
 def _bundle(conn):
-    scan = get_latest_scan(conn)
-    findings = get_findings(conn)
+    scope = visible_scope(conn)
+    scan = latest_scan_in_scope(conn, scope)
+    findings = in_scope(get_findings(conn), scope)
     for f in findings:
         f["obligations"] = obligations_for_rule(f["rule"])
         f["evidence"] = get_finding_evidence(conn, f["id"]) if f["evidence_available"] else []

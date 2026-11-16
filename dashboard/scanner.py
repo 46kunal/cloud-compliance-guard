@@ -8,13 +8,14 @@ from datetime import datetime, timezone
 import boto3
 
 from db.store import begin_scan, connect, count_finding_events, get_audit_log, get_violations, save_scan
+from dashboard import account as _account
 from dashboard.evidence import build_evidence_records
 from lambdas.audit_logger.hash_chain import GENESIS, append_entry
 from lambdas.remediation.handler import remediate_violations
 from lambdas.risk_classifier.handler import classify_violations
 from lambdas.rule_engine.handler import get_all_resources, run_rule_engine
 
-_scan_lock = threading.Lock()
+_scan_lock = _account.scan_lock  # shared so the monitored account is never switched mid-scan
 SERVICES = ("s3", "iam", "ec2", "cloudtrail")
 
 
@@ -49,6 +50,7 @@ def _scan_status(service_statuses, engine_ok=True):
 
 
 def scan_and_save(conn, resources: list = None, collection_report: dict = None) -> dict:
+    _account.ensure_can_scan()
     with _scan_lock:
         started_at = datetime.now(timezone.utc).isoformat()
         account_scope, region_scope = _account_scope(), _region_scope()
@@ -145,6 +147,8 @@ def start_background_scanner(interval_seconds: int) -> threading.Thread:
             try:
                 result = scan_and_save(conn)
                 print(f"[SCAN] {result}")
+            except _account.NoAccountConnected:
+                pass  # paused on purpose: an admin disconnected the AWS account
             except Exception as e:
                 print(f"[SCAN] failed: {e}", file=sys.stderr)
             finally:

@@ -20,8 +20,10 @@ if PROJECT_ROOT not in sys.path:
 
 from flask import Flask, jsonify, render_template
 
+from dashboard.account import NoAccountConnected
 from dashboard.auth import auth_mode, csrf_token, current_user, init_auth
 from dashboard.instance import instance_info
+from dashboard.routes.account import account_api
 from dashboard.routes.audit_log import audit_log_bp
 from dashboard.routes.compliance_score import compliance_score_bp
 from dashboard.routes.insight import insight_bp
@@ -53,6 +55,7 @@ def create_app() -> Flask:
     app.register_blueprint(compliance_score_bp)
     app.register_blueprint(audit_log_bp)
     app.register_blueprint(insight_bp)
+    app.register_blueprint(account_api)
 
     @app.context_processor
     def shell_context():
@@ -76,6 +79,7 @@ def create_app() -> Flask:
     page("findings", "findings.html", "Findings")
     page("scans", "scans.html", "Scan history")
     page("infrastructure", "infrastructure.html", "Infrastructure")
+    page("account", "account.html", "AWS account")
     page("reports", "reports.html", "Reports")
     page("audit", "audit_trail.html", "Audit trail")
 
@@ -83,6 +87,8 @@ def create_app() -> Flask:
     def scan_now():
         try:
             return jsonify(_run_scan())
+        except NoAccountConnected as error:
+            return jsonify({"error": "No AWS account connected", "detail": str(error)}), 409
         except Exception as error:
             app.logger.exception("scan failed")
             return jsonify({"error": "Scan failed", "detail": str(error)}), 500
