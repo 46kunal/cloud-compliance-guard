@@ -196,7 +196,8 @@ function initShell() {
   });
   const themeBtn = document.getElementById("theme-btn");
   if (themeBtn) themeBtn.addEventListener("click", () => {
-    const dark = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() === "#0c121d";
+    const explicit = document.documentElement.getAttribute("data-theme");
+    const dark = explicit ? explicit === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
     const next = dark ? "light" : "dark";
     applyTheme(next);
     try { localStorage.setItem("pg-theme", next); } catch (e) { /* ignore */ }
