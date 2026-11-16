@@ -61,7 +61,8 @@ checklist: `docs/DEPLOYMENT.md`.
 | Audit log | Implemented | SHA-256 hash chain from `GENESIS`, `verify_chain`; DynamoDB writes use conditional writes so two writers cannot fork it. |
 | Blockchain anchor | Optional, never run | `AuditAnchor.sol` + web3 client; no-op unless `WEB3_RPC_URL`, `ANCHOR_CONTRACT_ADDRESS`, `ANCHOR_PRIVATE_KEY` are set. Not called by the dashboard or scanner. |
 | Storage | Implemented | SQLite (default) and DynamoDB behind one facade (`db/store.py`). The DynamoDB code is unit-tested against a mock, not against a real account. |
-| Dashboard | Implemented | Flask, 7 pages, CSV and evidence-bundle export, printable report, infrastructure/cost page. |
+| Dashboard | Implemented | Flask, 8 pages, CSV and evidence-bundle export, printable report, infrastructure/cost page. "Audit ledger" look with self-hosted fonts (the app's CSP allows same-origin assets only). |
+| Monitored AWS account | Implemented | Top-bar chip shows the account being scanned; the **AWS account** page lets an admin connect another account with access keys, switch, log out (scans pause) or return to the default credentials (`dashboard/account.py`). Keys are held in memory only and are never persisted. Disabled on the AWS deployment, where the IAM role fixes the account. Once two accounts have history, all views follow the active account. |
 | Login and roles | Implemented | `POLICYGUARD_AUTH=off\|local\|cognito`. Roles `viewer` < `auditor` < `admin`; only `admin` can trigger a scan; the audit trail and reports need `auditor`. `local` is for development only. |
 | Scheduled scanner | Written | `lambdas/scanner/handler.py`, triggered by EventBridge; emits CloudWatch metrics and SNS alerts. |
 | AWS Config integration | Implemented | Rule engine calls `config:PutEvaluations` when invoked with a `resultToken`; not tested against a real Config recorder. |
