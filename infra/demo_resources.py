@@ -56,7 +56,11 @@ def create():
     s3, iam = boto3.client("s3", region_name=region), boto3.client("iam")
 
     kwargs = {} if region == "us-east-1" else {"CreateBucketConfiguration": {"LocationConstraint": region}}
-    s3.create_bucket(Bucket=bucket, **kwargs)
+    try:
+        s3.create_bucket(Bucket=bucket, **kwargs)
+    except Exception as e:
+        if "BucketAlreadyOwnedByYou" not in str(e) and "BucketAlreadyExists" not in str(e):
+            raise
     s3.put_public_access_block(Bucket=bucket, PublicAccessBlockConfiguration={
         "BlockPublicAcls": False, "IgnorePublicAcls": False,
         "BlockPublicPolicy": False, "RestrictPublicBuckets": False})
@@ -107,7 +111,11 @@ def create():
 
     # Correctly configured resources (compliant private bucket tagged handles_personal_data=true)
     private = _private_bucket(account)
-    s3.create_bucket(Bucket=private, **kwargs)
+    try:
+        s3.create_bucket(Bucket=private, **kwargs)
+    except Exception as e:
+        if "BucketAlreadyOwnedByYou" not in str(e) and "BucketAlreadyExists" not in str(e):
+            raise
     s3.put_public_access_block(Bucket=private, PublicAccessBlockConfiguration={
         "BlockPublicAcls": True, "IgnorePublicAcls": True,
         "BlockPublicPolicy": True, "RestrictPublicBuckets": True})
