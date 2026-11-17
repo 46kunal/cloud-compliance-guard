@@ -38,6 +38,19 @@ Parameters:
     Type: Number
     Default: 15
     MinValue: 5
+  AnchorLockMode:
+    Type: String
+    Default: GOVERNANCE
+    AllowedValues: [GOVERNANCE, COMPLIANCE]
+    Description: >
+      Object Lock mode for audit-chain receipts. GOVERNANCE can be bypassed by an administrator with a special permission
+      (the destroy script does this). COMPLIANCE cannot be shortened or deleted by anyone, including the account root user,
+      until the retention date, so the stack cannot be fully deleted before then.
+  AnchorRetentionDays:
+    Type: Number
+    Default: 30
+    MinValue: 1
+    Description: Days each audit-chain receipt stays locked
   MonthlyBudgetUsd:
     Type: Number
     Default: 25
@@ -245,6 +258,8 @@ Resources:
     Properties:
       Encrypted: true
       PerformanceMode: generalPurpose
+      BackupPolicy:
+        Status: ENABLED
       FileSystemTags:
         - {Key: Name, Value: policyguard-evidence}
   MountTargetA:
@@ -345,6 +360,73 @@ Resources:
         - {AttributeName: seq, KeyType: RANGE}
       SSESpecification: {SSEEnabled: true}
       PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+
+  DocumentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AWS::StackName}-documents'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: kind, AttributeType: S}
+        - {AttributeName: id, AttributeType: S}
+      KeySchema:
+        - {AttributeName: kind, KeyType: HASH}
+        - {AttributeName: id, KeyType: RANGE}
+      SSESpecification: {SSEEnabled: true}
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+
+  # ------------------------------------------------------------------ Tamper-proof anchoring for the audit chain
+  AnchorBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      ObjectLockEnabled: true            # also turns on versioning
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: 'aws:kms'}
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - {Key: project, Value: policyguard}
+        - {Key: purpose, Value: audit-anchors}
+  AnchorBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AnchorBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource: [!GetAtt AnchorBucket.Arn, !Sub '${AnchorBucket.Arn}/*']
+            Condition:
+              Bool: {'aws:SecureTransport': 'false'}
+  AnchorKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: Signs PolicyGuard audit-chain receipts. The private key never leaves KMS.
+      KeySpec: RSA_2048
+      KeyUsage: SIGN_VERIFY
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AccountAdministration
+            Effect: Allow
+            Principal: {AWS: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:root'}
+            Action: 'kms:*'
+            Resource: '*'
+  AnchorKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${AWS::StackName}-audit-anchor'
+      TargetKeyId: !Ref AnchorKey
 
   # ------------------------------------------------------------------ Login (Cognito)
   UserPool:
@@ -477,7 +559,38 @@ Resources:
                   - guardduty:ListDetectors
                   - guardduty:GetDetector
                   - sts:GetCallerIdentity
+                  - iam:GetAccountSummary
+                  - iam:ListAccessKeys
+                  - ec2:DescribeVolumes
+                  - ec2:DescribeSnapshots
+                  - ec2:DescribeFlowLogs
+                  - ec2:DescribeVpcs
+                  - s3:GetBucketLogging
+                  - s3:GetLifecycleConfiguration
+                  - rds:DescribeDBInstances
+                  - dynamodb:ListTables
+                  - dynamodb:DescribeTable
+                  - dynamodb:DescribeContinuousBackups
+                  - dynamodb:ListTagsOfResource
+                  - elasticfilesystem:DescribeFileSystems
+                  - elasticfilesystem:DescribeBackupPolicy
                 Resource: '*'
+        - PolicyName: anchor-and-assume
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:PutObject, s3:PutObjectRetention, s3:GetObject, s3:GetObjectRetention]
+                Resource: !Sub '${AnchorBucket.Arn}/*'
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt AnchorBucket.Arn
+              - Effect: Allow
+                Action: [kms:Sign, kms:Verify, kms:DescribeKey]
+                Resource: !GetAtt AnchorKey.Arn
+              - Effect: Allow
+                Action: sts:AssumeRole
+                Resource: 'arn:aws:iam::*:role/PolicyGuard*'
         - PolicyName: write-findings
           PolicyDocument:
             Version: '2012-10-17'
@@ -510,7 +623,7 @@ Resources:
       Handler: lambdas.scanner.handler.lambda_handler
       Role: !GetAtt ScannerRole.Arn
       MemorySize: 512
-      Timeout: 120
+      Timeout: 300
       Code:
         S3Bucket: !Ref ArtifactBucket
         S3Key: !Ref ScannerKey
@@ -521,6 +634,11 @@ Resources:
           POLICYGUARD_TABLE_PREFIX: !Ref AWS::StackName
           POLICYGUARD_DRY_RUN: 'true'
           POLICYGUARD_ALERT_TOPIC_ARN: !Ref AlertTopic
+          POLICYGUARD_HOME_ACCOUNT_ID: !Ref AWS::AccountId
+          ANCHOR_BUCKET: !Ref AnchorBucket
+          ANCHOR_KMS_KEY_ID: !Ref AnchorKey
+          ANCHOR_LOCK_MODE: !Ref AnchorLockMode
+          ANCHOR_RETENTION_DAYS: !Ref AnchorRetentionDays
   ScanSchedule:
     Type: AWS::Events::Rule
     Properties:
@@ -581,6 +699,33 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore   # Session Manager instead of SSH
       Policies:
+        - PolicyName: admin-features
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:GetObjectRetention]
+                Resource: !Sub '${AnchorBucket.Arn}/*'
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt AnchorBucket.Arn
+              - Effect: Allow
+                Action: [kms:Verify, kms:DescribeKey]
+                Resource: !GetAtt AnchorKey.Arn
+              - Effect: Allow
+                Action:
+                  - cognito-idp:ListUsers
+                  - cognito-idp:AdminCreateUser
+                  - cognito-idp:AdminDeleteUser
+                  - cognito-idp:AdminDisableUser
+                  - cognito-idp:AdminEnableUser
+                  - cognito-idp:AdminAddUserToGroup
+                  - cognito-idp:AdminRemoveUserFromGroup
+                  - cognito-idp:AdminListGroupsForUser
+                Resource: !GetAtt UserPool.Arn
+              - Effect: Allow
+                Action: sts:AssumeRole
+                Resource: 'arn:aws:iam::*:role/PolicyGuard*'
         - PolicyName: dashboard
           PolicyDocument:
             Version: '2012-10-17'
@@ -652,9 +797,18 @@ Resources:
             COGNITO_CLIENT_ID=${UserPoolClient}
             COGNITO_REGION=${AWS::Region}
             AWS_REGION=${AWS::Region}
+            AWS_DEFAULT_REGION=${AWS::Region}
             POLICYGUARD_SCANNER_FUNCTION=${ScannerFunction}
             POLICYGUARD_ASG_NAME=${AWS::StackName}-asg
             POLICYGUARD_EVIDENCE_DIR=/mnt/evidence
+            COGNITO_USER_POOL_ID=${UserPool}
+            ANCHOR_BUCKET=${AnchorBucket}
+            ANCHOR_KMS_KEY_ID=${AnchorKey}
+            ANCHOR_LOCK_MODE=${AnchorLockMode}
+            ANCHOR_RETENTION_DAYS=${AnchorRetentionDays}
+            POLICYGUARD_HOME_ACCOUNT_ID=${AWS::AccountId}
+            POLICYGUARD_SCANNER_ROLE_ARN=${ScannerRole.Arn}
+            POLICYGUARD_INSTANCE_ROLE_ARN=${InstanceRole.Arn}
             POLICYGUARD_SCAN_INTERVAL_MINUTES=${ScanIntervalMinutes}
             ENV
             chmod 600 /etc/policyguard.env
@@ -666,7 +820,7 @@ Resources:
             [Service]
             WorkingDirectory=/opt/policyguard
             EnvironmentFile=/etc/policyguard.env
-            ExecStart=/opt/policyguard/venv/bin/gunicorn --workers 2 --bind 0.0.0.0:5000 --access-logfile - "dashboard.app:create_app()"
+            ExecStart=/opt/policyguard/venv/bin/gunicorn --workers 2 --timeout 150 --bind 0.0.0.0:5000 --access-logfile - "dashboard.app:create_app()"
             Restart=always
             User=ec2-user
             [Install]
@@ -783,6 +937,14 @@ Outputs:
     Value: !Ref ScannerFunction
   AutoScalingGroupName:
     Value: !Ref AutoScalingGroup
+  AnchorBucketName:
+    Description: Object Lock bucket holding signed audit-chain receipts
+    Value: !Ref AnchorBucket
+  AnchorKeyId:
+    Value: !Ref AnchorKey
+  ScannerRoleArn:
+    Description: Trusted by member-account roles (shown in the dashboard's account instructions)
+    Value: !GetAtt ScannerRole.Arn
   EvidenceFileSystemId:
     Value: !Ref FileSystem
   DynamoDbTablePrefix:

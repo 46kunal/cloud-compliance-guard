@@ -16,6 +16,7 @@ Use a sandbox/student account. The public bucket is empty, but it IS publicly re
 until you run "delete" or PolicyGuard remediates it.
 """
 import json
+import os
 import secrets
 import sys
 
@@ -28,14 +29,20 @@ USER_NAME = f"{PREFIX}-user"
 READONLY_POLICY_NAME = f"{PREFIX}-readonly"
 
 
+def _suffix() -> str:
+    """Optional POLICYGUARD_DEMO_SUFFIX: S3 refuses to recreate a just-deleted bucket name for a while."""
+    value = os.environ.get("POLICYGUARD_DEMO_SUFFIX", "")
+    return f"-{value}" if value else ""
+
+
 def _private_bucket(account: str) -> str:
-    return f"{PREFIX}-private-{account}"
+    return f"{PREFIX}-private-{account}{_suffix()}"
 
 
 def _names():
     account = boto3.client("sts").get_caller_identity()["Account"]
     region = boto3.session.Session().region_name or "us-east-1"
-    return account, region, f"{PREFIX}-public-{account}"
+    return account, region, f"{PREFIX}-public-{account}{_suffix()}"
 
 
 def _step(failures: list, label: str, fn, **kwargs) -> bool:
