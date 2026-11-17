@@ -86,6 +86,24 @@ point at DynamoDB Local if you want to test that backend on your machine.
 | **Security posture** | Dashboard → Frameworks, Findings | India frameworks with open and not-assessed obligations, evidence with hashes |
 | **Cost control** | Budgets console | The monthly budget and the 80% alert |
 
+## Admin features added after the first deployment
+
+* **Audit anchors:** `AnchorBucket` (S3 Object Lock) and `AnchorKey` (KMS, RSA 2048, sign and verify) hold signed receipts of
+  the audit chain head. `AnchorLockMode` defaults to GOVERNANCE (an administrator can bypass it, and `destroy.ps1` does). In
+  COMPLIANCE mode nobody can delete a receipt before `AnchorRetentionDays`, so the stack cannot be fully deleted until then.
+* **Adding another AWS account:** on the Accounts page register the account ID, then in that account deploy
+  `infra/cloudformation/member-account-role.yaml` with the command the page shows, then press Verify. The role must be named
+  `PolicyGuard…` because the scanner's permissions only allow `arn:aws:iam::*:role/PolicyGuard*`.
+* **Users:** the Users page manages the Cognito pool through the servers' IAM role, which is allowed only the Cognito admin
+  calls it needs on that one pool.
+* **Redeploying code without replacing servers:** upload `build/app.zip`, then on each server run
+  `aws s3 cp` of the zip, `unzip -o` into `/opt/policyguard`, and `systemctl restart policyguard` through Session Manager.
+  Upload `build/scanner.zip` and run `aws lambda update-function-code`.
+* **Tamper demo:** `python infra/tamper_demo.py forge`, look at the Audit trail, then `python infra/tamper_demo.py restore`.
+* **Demo findings:** `python infra/demo_resources.py create` and `python infra/demo_findings.py create` make deliberately
+  weak, empty, clearly named resources; delete them with the matching `delete` commands after the demo. If S3 refuses a bucket
+  name you recently deleted, set `POLICYGUARD_DEMO_SUFFIX=m2` and retry.
+
 ## Known limits of this deployment
 
 * One NAT gateway in one availability zone. If that zone fails, private servers lose outbound internet (the

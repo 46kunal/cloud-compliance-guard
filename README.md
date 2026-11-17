@@ -34,19 +34,48 @@ Set `POLICYGUARD_PROFILE=india` to add rules tied to Indian obligations. The def
 
 | Rule | Detects | Relates to |
 | :--- | :--- | :--- |
-| `data_residency_india` | S3 buckets and security groups outside `ap-south-1` / `ap-south-2` (a review pointer, not a legal finding) | DPDP s.16, RBI / SEBI / IRDAI localisation |
+| `data_residency_india` | S3 buckets, security groups, EBS volumes, RDS instances, DynamoDB tables and EFS file systems outside `ap-south-1` / `ap-south-2` (a review pointer, not a legal finding) | DPDP s.16, RBI payment data, SEBI CSCRF |
 | `tls_enforcement` | S3 bucket policy that does not deny non-TLS requests | DPDP Rule 6, SPDI Rules |
-| `log_retention_180d` | CloudWatch log groups that expire logs in under 180 days | CERT-In Directions 2022 |
-| `log_retention_365d` | CloudWatch log groups that expire logs in under 365 days | DPDP Rule 6 (not yet in force) |
-| `s3_versioning` | S3 versioning off | DPDP Rule 6 continuity safeguard |
-| `threat_detection_enabled` | No enabled GuardDuty detector | DPDP Rule 7, CERT-In reporting readiness |
+| `log_retention_180d` | CloudWatch log groups that expire logs in under 180 days | CERT-In Direction (iv), IRDAI 2023 guidelines |
+| `log_retention_365d` | CloudWatch log groups that expire logs in under 365 days | DPDP Rule 6(1)(e) (not yet in force) |
+| `log_location_india` | CloudTrail delivering logs outside Indian regions (a review pointer: CERT-In FAQ Q35 allows copies abroad if producible) | CERT-In, IRDAI, SEBI, RBI |
+| `vpc_flow_logs` | VPCs with no active flow log | DPDP Rule 6(1)(c), CERT-In |
+| `s3_access_logging` | Personal-data buckets with server access logging off | DPDP Rule 6(1)(c) |
+| `retention_lifecycle` | Personal-data buckets with no lifecycle (expiry) rule | DPDP s.8(7) |
+| `s3_versioning` | S3 versioning off | DPDP Rule 6(1)(d) continuity |
+| `backup_enabled` | RDS without backups, DynamoDB without point-in-time recovery, EFS without backups, EBS volumes with no snapshot | DPDP Rule 6(1)(d), SEBI CSCRF |
+| `root_mfa` | Root account without MFA, or with access keys | DPDP Rule 6(1)(b) |
+| `stale_access_keys` | Active IAM access keys 90 days old or more (limit is a policy choice) | DPDP Rule 6(1)(b) |
+| `threat_detection_enabled` | No enabled GuardDuty detector | DPDP Rule 7, CERT-In 6-hour reporting readiness |
+
+`encryption_at_rest` and `public_storage` also cover RDS, EBS and EFS (and publicly accessible RDS) in this profile.
+The personal-data rules (`s3_access_logging`, `retention_lifecycle`) only apply to buckets tagged `handles_personal_data=true`.
 
 The mapping from legal obligations to these checks lives in [`compliance/india_catalog.json`](compliance/india_catalog.json).
-Every entry records whether it is in force, how much of it can be checked from configuration, and how well the
-clause wording has been verified. Nothing in the draft is verified against official text yet, and the UI says so.
-Measured behaviour of these rules is tested in `tests/test_india_rules.py`.
+Every entry records whether it is in force, how much of it can be checked from configuration, and how well its wording
+has been verified. On 17 November 2026, six obligations (CERT-In directions (i), (ii) and (iv), the RBI payment data
+circular, the SEBI CSCRF circular and the IRDAI 2023 logging guideline) were checked against the official text and are
+marked `primary`, with the sources and key points shown on the Frameworks page. The DPDP Rules (6 and 7) come from a
+third-party reproduction and the DPDP Act, the SEBI cloud framework and the IT Act text could not be read, so those
+stay `secondary` or `needs-verification`. Measured behaviour of the rules is tested in `tests/test_india_rules.py`
+and `tests/test_india_rules_ext.py`.
+
+The scanner role needs extra read permissions for the new checks; they are listed in `infra/iam/` and in the
+CloudFormation template. Without them a service shows as partial or failed and its rules are skipped, never passed.
 
 Full rule-to-clause table: [`docs/compliance_mapping.md`](docs/compliance_mapping.md).
+
+### Admin and process features
+
+| Feature | Where | What it does |
+| :--- | :--- | :--- |
+| Tamper-proof audit anchors | Audit trail | After each scan the chain head hash goes to an S3 Object Lock bucket as a KMS-signed receipt. The page re-checks every receipt, so a fully rewritten chain is flagged (`infra/tamper_demo.py` shows it safely) |
+| Monitored accounts | Accounts | Scan other AWS accounts through a read-only cross-account role with a per-account External ID. No keys are stored. An account picker filters every page |
+| Users | Users (admin) | Create Cognito logins, change viewer / auditor / admin roles, disable or delete. The last admin is protected and every change is audited |
+| Controls register | Controls | An admin records owner, evidence and review date for duties that cannot be read from cloud settings. Frameworks shows them as attested, partly attested or needing attestation |
+| Incident clock | Incidents | Starts the CERT-In 6-hour and DPDP 72-hour clocks, and drafts the reports for a person to file. Nothing is sent to a regulator |
+
+A talk track for presenting all of this is in [`docs/DEMO.md`](docs/DEMO.md).
 
 ### Running on AWS
 
