@@ -13,7 +13,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 BUILD = os.path.join(ROOT, "build")
 
 COMMON = ["db", "compliance", "lambdas"]
-SCANNER_EXTRA = ["dashboard/scanner.py", "dashboard/evidence.py"]
+SCANNER_EXTRA = ["dashboard/scanner.py", "dashboard/evidence.py", "dashboard/account.py", "dashboard/monitored.py"]
 APP_EXTRA = ["dashboard"]
 SKIP_DIRS = {"__pycache__", ".pytest_cache", "venv", ".git"}
 SKIP_SUFFIXES = (".pyc", ".db", ".db-journal")

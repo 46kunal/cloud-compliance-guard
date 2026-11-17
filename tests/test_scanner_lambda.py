@@ -30,8 +30,11 @@ def test_scanner_zip_imports_without_flask(tmp_path, monkeypatch):
     assert not any(n.startswith("dashboard/templates") for n in names)
 
     # Import in a clean interpreter where Flask is unavailable, as it would be in Lambda.
+    # The handler imports dashboard.scanner and db.store inside lambda_handler, so import those too:
+    # a missing file in the zip must fail here, not on the first real invocation.
     code = ("import sys; sys.modules['flask'] = None; sys.path.insert(0, sys.argv[1]); "
-            "import lambdas.scanner.handler as h; assert callable(h.lambda_handler)")
+            "import lambdas.scanner.handler as h; assert callable(h.lambda_handler); "
+            "import dashboard.scanner, db.store, compliance.catalog")
     result = subprocess.run([sys.executable, "-I", "-c", code, str(unpacked)], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
 
@@ -82,3 +85,35 @@ def test_handler_scans_stores_and_alerts_on_new_high_findings(aws, monkeypatch, 
     lambda_handler({}, None)            # same finding again: no second alert
     again = queue.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=10).get("Messages", [])
     assert not again
+
+
+def test_importing_the_scanner_handler_never_changes_process_wide_settings(monkeypatch):
+    """Regression: importing it used to set POLICYGUARD_BACKEND=dynamodb, which sent later tests to real AWS."""
+    import importlib
+    import os
+    monkeypatch.delenv("POLICYGUARD_BACKEND", raising=False)
+    monkeypatch.delenv("POLICYGUARD_DRY_RUN", raising=False)
+    import lambdas.scanner.handler as handler
+    importlib.reload(handler)
+    assert "POLICYGUARD_BACKEND" not in os.environ and "POLICYGUARD_DRY_RUN" not in os.environ
+
+
+def test_every_dashboard_module_the_scanner_code_imports_is_in_the_zip(tmp_path, monkeypatch):
+    """Static check: follow every 'dashboard' import found in the zipped code (including lazy imports inside
+    functions) and require the module to be packaged. This catches a missing file before a real invocation does."""
+    import re
+    sys.path.insert(0, os.path.join(ROOT, "infra"))
+    import package
+    monkeypatch.setattr(package, "BUILD", str(tmp_path / "b"))
+    scanner_zip = package.build("scanner.zip", package.COMMON + package.SCANNER_EXTRA)
+    with zipfile.ZipFile(scanner_zip) as archive:
+        names = set(archive.namelist())
+        sources = {n: archive.read(n).decode("utf-8", "ignore") for n in names if n.endswith(".py")}
+    wanted = set()
+    for text in sources.values():
+        for match in re.finditer(r"^\s*from dashboard\.(\w+) import|^\s*import dashboard\.(\w+)", text, re.M):
+            wanted.add(match.group(1) or match.group(2))
+        for match in re.finditer(r"^\s*from dashboard import ([\w, ]+)", text, re.M):
+            wanted.update(part.strip().split(" as ")[0] for part in match.group(1).split(","))
+    missing = sorted(f"dashboard/{m}.py" for m in wanted if f"dashboard/{m}.py" not in names)
+    assert not missing, f"the scanner zip is missing modules its code imports: {missing}"

@@ -5,6 +5,12 @@
   <p>Chain integrity: <strong id="chain-status">checking…</strong></p>
   <p class="hint">Each entry stores the hash of the one before it. Editing any entry breaks every hash after it. This detects tampering; it does not prevent someone with database write access from rewriting the whole chain, which is why the latest hash should be anchored somewhere they cannot edit.</p>
 </section>
+<section class="panel" id="anchor-panel">
+  <div class="panel-head"><h2>Tamper-proof anchors</h2><span class="muted" id="anchor-note"></span></div>
+  <p>Anchor check: <strong id="anchor-status">checking…</strong></p>
+  <p class="hint" id="anchor-help">After each scan, the latest chain hash is written to a locked, signed receipt that a database writer cannot edit. If someone rewrote the whole chain, it would no longer match these receipts.</p>
+  <div id="anchor-body"></div>
+</section>
 <div class="table-wrap">
 <table>
   <thead><tr><th>#</th><th>Time (UTC)</th><th>Event</th><th>Details</th><th>Previous hash</th><th>Entry hash</th></tr></thead>
