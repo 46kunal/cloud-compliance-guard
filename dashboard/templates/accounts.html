@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="acct-msg" class="banner banner-bad" role="alert" hidden></div>
+<p class="lead">PolicyGuard scans other AWS accounts through a read-only IAM role that the account's owner creates. No access keys are typed in or stored. Each account gets its own External ID, and the owner can end access at any time by deleting the role.</p>
+
+<section class="panel">
+  <div class="panel-head"><h2>Monitored accounts</h2><span class="muted" id="home-note"></span></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>Account ID</th><th>Region</th><th>Status</th><th>Last scan</th><th></th></tr></thead>
+      <tbody id="acct-rows"><tr><td colspan="6">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel" id="add-panel" style="margin-top:1.25rem" hidden>
+  <div class="panel-head"><h2>Add an AWS account</h2></div>
+  <form id="add-form" class="account-form" autocomplete="off">
+    <label class="field"><span>Name</span><input id="a-name" maxlength="60" required placeholder="Production"></label>
+    <label class="field"><span>Account ID (12 digits)</span><input id="a-id" maxlength="12" inputmode="numeric" pattern="[0-9]{12}" required></label>
+    <label class="field"><span>Region to scan</span><input id="a-region" value="ap-south-1" maxlength="20" required></label>
+    <div class="full"><button class="btn btn-primary" type="submit">Register account</button></div>
+  </form>
+</section>
+
+<section class="panel" id="steps-panel" style="margin-top:1.25rem" hidden>
+  <div class="panel-head"><h2>Next: create the role in that account</h2><span id="steps-account" class="muted"></span></div>
+  <ol class="steps">
+    <li>Sign in to the <strong>other</strong> AWS account and download the template: <a id="steps-template" href="#">member-account-role.yaml</a></li>
+    <li>Deploy it there (CloudShell or CLI) with this command:
+      <pre class="code-block" id="steps-command"></pre></li>
+    <li>Come back here and press <strong>Verify</strong> on the account row. PolicyGuard checks that it can assume the role.</li>
+  </ol>
+  <p class="hint">The External ID in the command is secret to this account pair. It stops another AWS customer from tricking PolicyGuard into scanning your account.</p>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/accounts.js') }}"></script>{% endblock %}

@@ -68,7 +68,8 @@ def _caller_identity(**credentials):
 
 
 def _region():
-    return boto3.session.Session().region_name or "us-east-1"
+    # AWS_REGION is what the EC2 servers set; boto3 itself only reads AWS_DEFAULT_REGION or the config file.
+    return boto3.session.Session().region_name or os.environ.get("AWS_REGION") or "us-east-1"
 
 
 def _credential_source():
@@ -265,6 +266,15 @@ def visible_scope(conn):
     scopes = {scan.get("account_scope") for scan in get_scans(conn, 500)} - {None, "legacy"}
     if len(scopes) <= 1:
         return None
+    try:
+        from flask import has_request_context, session
+        chosen = session.get("view_account") if has_request_context() else None
+    except Exception:
+        chosen = None
+    if chosen == "ALL":
+        return None
+    if chosen in scopes:
+        return chosen
     return active_account_id()
 
 

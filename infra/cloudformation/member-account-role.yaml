@@ -1,0 +1,93 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Read-only role that lets PolicyGuard scan THIS account. Deploy it in the account you want monitored.
+  It trusts only PolicyGuard's own roles, and only with the External ID shown in the PolicyGuard dashboard.
+  Delete this stack at any time to end access.
+
+Parameters:
+  ExternalId:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+    Description: The External ID shown by PolicyGuard when the account was registered
+  HomeAccountId:
+    Type: String
+    AllowedPattern: '^[0-9]{12}$'
+    Description: The AWS account PolicyGuard runs in
+  TrustedRoleArns:
+    Type: CommaDelimitedList
+    Description: PolicyGuard's scanner and server role ARNs, as shown in the dashboard
+  RoleName:
+    Type: String
+    Default: PolicyGuardReadOnly
+    AllowedPattern: '^PolicyGuard[A-Za-z0-9+=,.@_-]*$'
+    Description: Must start with PolicyGuard (PolicyGuard's own permissions only allow roles with that prefix)
+
+Resources:
+  ScannerReadOnlyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      MaxSessionDuration: 3600
+      Tags:
+        - {Key: policyguard-home-account, Value: !Ref HomeAccountId}
+        - {Key: purpose, Value: read-only-compliance-scan}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref TrustedRoleArns
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                'sts:ExternalId': !Ref ExternalId
+      Policies:
+        - PolicyName: read-account-configuration
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadConfigurationOnly
+                Effect: Allow
+                Action:
+                  - s3:ListAllMyBuckets
+                  - s3:GetBucketLocation
+                  - s3:GetBucketPolicy
+                  - s3:GetBucketPolicyStatus
+                  - s3:GetBucketPublicAccessBlock
+                  - s3:GetEncryptionConfiguration
+                  - s3:GetBucketTagging
+                  - s3:GetBucketVersioning
+                  - s3:GetBucketLogging
+                  - s3:GetLifecycleConfiguration
+                  - iam:ListPolicies
+                  - iam:GetPolicyVersion
+                  - iam:ListUsers
+                  - iam:GetLoginProfile
+                  - iam:ListMFADevices
+                  - iam:GetAccountSummary
+                  - iam:ListAccessKeys
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeVolumes
+                  - ec2:DescribeSnapshots
+                  - ec2:DescribeFlowLogs
+                  - ec2:DescribeVpcs
+                  - cloudtrail:DescribeTrails
+                  - cloudtrail:GetTrailStatus
+                  - logs:DescribeLogGroups
+                  - guardduty:ListDetectors
+                  - guardduty:GetDetector
+                  - rds:DescribeDBInstances
+                  - dynamodb:ListTables
+                  - dynamodb:DescribeTable
+                  - dynamodb:DescribeContinuousBackups
+                  - dynamodb:ListTagsOfResource
+                  - elasticfilesystem:DescribeFileSystems
+                  - elasticfilesystem:DescribeBackupPolicy
+                  - sts:GetCallerIdentity
+                Resource: '*'
+
+Outputs:
+  RoleArn:
+    Description: Give this to the PolicyGuard admin if the dashboard does not already show it
+    Value: !GetAtt ScannerReadOnlyRole.Arn
