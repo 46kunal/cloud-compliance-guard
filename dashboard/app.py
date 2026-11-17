@@ -14,6 +14,11 @@ import json
 import os
 import sys
 
+# The EC2 servers set AWS_REGION, but boto3 only reads AWS_DEFAULT_REGION. Without this, any AWS call that needs a
+# region (KMS, Lambda, Cognito...) fails with "You must specify a region". Done before any other import reads it.
+if not os.environ.get("AWS_DEFAULT_REGION") and os.environ.get("AWS_REGION"):
+    os.environ["AWS_DEFAULT_REGION"] = os.environ["AWS_REGION"]
+
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
@@ -27,6 +32,9 @@ from dashboard.routes.account import account_api
 from dashboard.routes.audit_log import audit_log_bp
 from dashboard.routes.compliance_score import compliance_score_bp
 from dashboard.routes.insight import insight_bp
+from dashboard.routes.monitored import monitored_bp
+from dashboard.routes.process import process_bp
+from dashboard.routes.users import users_bp
 from dashboard.routes.violations import violations_bp
 
 
@@ -55,6 +63,9 @@ def create_app() -> Flask:
     app.register_blueprint(compliance_score_bp)
     app.register_blueprint(audit_log_bp)
     app.register_blueprint(insight_bp)
+    app.register_blueprint(monitored_bp)
+    app.register_blueprint(process_bp)
+    app.register_blueprint(users_bp)
     app.register_blueprint(account_api)
 
     @app.context_processor
@@ -81,6 +92,10 @@ def create_app() -> Flask:
     page("infrastructure", "infrastructure.html", "Infrastructure")
     page("account", "account.html", "AWS account")
     page("reports", "reports.html", "Reports")
+    page("accounts", "accounts.html", "Accounts")
+    page("controls", "controls.html", "Controls")
+    page("incidents", "incidents.html", "Incidents")
+    page("users", "users.html", "Users")
     page("audit", "audit_trail.html", "Audit trail")
 
     @app.route("/api/scan", methods=["POST"])

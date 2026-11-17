@@ -40,6 +40,14 @@ def _with_store(fn):
         conn.close()
 
 
+def _control_status():
+    try:
+        from dashboard.process import controls_by_obligation
+        return _with_store(controls_by_obligation)
+    except Exception:
+        return {}
+
+
 @insight_bp.route("/api/frameworks")
 def frameworks():
     open_findings = _with_store(lambda conn: in_scope(get_violations(conn), visible_scope(conn)))
@@ -47,7 +55,7 @@ def frameworks():
     return jsonify({
         "catalog_version": catalog["catalog_version"], "last_reviewed": catalog["last_reviewed"],
         "profile": os.environ.get("POLICYGUARD_PROFILE", "baseline"), "disclaimer": DISCLAIMER,
-        "items": framework_summary(open_findings),
+        "items": framework_summary(open_findings, _control_status()),
     })
 
 
@@ -201,6 +209,6 @@ def printable_report():
     open_findings = [f for f in findings if f["status"] != "RESOLVED"]
     catalog = load_catalog()
     return render_template("report_print.html", scan=scan, findings=findings, open_findings=open_findings,
-                           summary=framework_summary(open_findings), catalog=catalog, disclaimer=DISCLAIMER,
+                           summary=framework_summary(open_findings, _control_status()), catalog=catalog, disclaimer=DISCLAIMER,
                            profile=os.environ.get("POLICYGUARD_PROFILE", "baseline"),
                            generated=datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"))

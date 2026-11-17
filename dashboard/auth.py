@@ -26,7 +26,16 @@ PUBLIC_ENDPOINTS = {"auth.login", "auth.new_password", "health", "static"}
 ENDPOINT_ROLES = {
     "audit": "auditor", "audit_log.audit_log": "auditor", "violations.finding_evidence": "auditor",
     "scan_now": "admin", "reports": "auditor", "insight.export_csv": "auditor",
-    "insight.export_bundle": "auditor", "insight.saved_reports": "auditor", "insight.printable_report": "auditor",
+    "insight.export_bundle": "auditor", "insight.saved_reports": "auditor",
+    "audit_log.audit_anchors": "auditor", "accounts": "auditor", "monitored.list_accounts": "auditor",
+    "monitored.create_account": "admin", "monitored.account_instructions": "admin", "monitored.account_template": "admin",
+    "monitored.verify_account": "admin", "monitored.enable_account": "admin", "monitored.disable_account": "admin",
+    "monitored.delete_account": "admin", "monitored.scan_account": "admin",
+    "controls": "auditor", "incidents": "auditor", "process.controls": "auditor", "process.incidents": "auditor",
+    "process.incident_drafts": "auditor", "process.attest": "admin", "process.revoke": "admin",
+    "process.open_incident": "admin", "process.step": "admin",
+    "users": "admin", "users_api.list_all": "admin", "users_api.create": "admin", "users_api.role": "admin",
+    "users_api.enable": "admin", "users_api.disable": "admin", "users_api.delete": "admin", "users_api.resend": "admin", "insight.printable_report": "auditor",
     "account_api.connect": "admin", "account_api.switch": "admin", "account_api.disconnect": "admin",
     "account_api.use_default": "admin",
 }

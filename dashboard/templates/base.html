@@ -21,6 +21,10 @@
         <a href="{{ url_for('account') }}" data-nav="account"><span class="ico" aria-hidden="true">⚿</span>AWS account</a>
         {% if user and user.role in ('auditor', 'admin') %}
         <a href="{{ url_for('reports') }}" data-nav="reports"><span class="ico" aria-hidden="true">▤</span>Reports</a>
+        <a href="{{ url_for('controls') }}" data-nav="controls"><span class="ico" aria-hidden="true">✔</span>Controls</a>
+        <a href="{{ url_for('incidents') }}" data-nav="incidents"><span class="ico" aria-hidden="true">⏱</span>Incidents</a>
+        <a href="{{ url_for('accounts') }}" data-nav="accounts"><span class="ico" aria-hidden="true">⌂</span>Accounts</a>
+        {% if user and user.role == 'admin' %}<a href="{{ url_for('users') }}" data-nav="users"><span class="ico" aria-hidden="true">☺</span>Users</a>{% endif %}
         <a href="{{ url_for('audit') }}" data-nav="audit"><span class="ico" aria-hidden="true">⛓</span>Audit trail</a>
         {% endif %}
       </nav>
@@ -33,6 +37,8 @@
         <button class="icon-btn menu-btn" id="menu-btn" type="button" aria-label="Toggle navigation" aria-controls="sidebar" aria-expanded="false">☰</button>
         <h1 class="page-title">{{ title }}</h1>
         <div class="topbar-actions">
+          <label class="view-switch" id="view-switch" hidden><span class="sr-only">Account to view</span>
+            <select id="view-select" aria-label="Account to view"></select></label>
           <a class="account-chip" id="account-chip" href="{{ url_for('account') }}" data-state="loading"
              aria-label="Checking which AWS account is monitored" title="AWS account being monitored">
             <span class="account-dot" aria-hidden="true"></span>

@@ -236,4 +236,31 @@ function initShell() {
   });
 }
 
-if (typeof document.querySelector === "function" && document.body) initShell();
+// Account picker: shown only when more than one account has scan data.
+async function initViewSwitch() {
+  const wrap = document.getElementById("view-switch");
+  if (!wrap) return;
+  try {
+    const view = await getJson("/api/view");
+    if (!view.options || view.options.length < 2) return;
+    const select = document.getElementById("view-select");
+    select.replaceChildren(...view.options.map((o) => {
+      const option = node("option", null, o.label);
+      option.value = o.id;
+      return option;
+    }));
+    select.value = view.current;
+    select.addEventListener("change", async () => {
+      select.disabled = true;
+      try {
+        const csrf = await getCsrf();
+        const res = await fetch("/api/view", { method: "POST", credentials: "same-origin",
+          headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify({ account_id: select.value }) });
+        if (res.ok) window.location.reload();
+      } finally { select.disabled = false; }
+    });
+    wrap.hidden = false;
+  } catch (e) { /* the picker is optional */ }
+}
+
+if (typeof document.querySelector === "function" && document.body) { initShell(); initViewSwitch(); }

@@ -212,7 +212,9 @@ def test_dashboard_routes_render_and_report_not_assessed(tmp_path, monkeypatch):
     frontend_urls = set(re.findall(r'(?:getJson|postJson|fetch)\("(/api/[^"?]+)', javascript))
     assert frontend_urls == {"/api/compliance-score", "/api/findings", "/api/audit-log", "/api/scan", "/api/findings/",
                              "/api/scans", "/api/frameworks", "/api/usage", "/api/instance", "/api/me",
-                             "/api/reports/saved", "/api/account"}
+                             "/api/reports/saved", "/api/account", "/api/audit-anchors",
+                             "/api/monitored-accounts", "/api/monitored-accounts/", "/api/view", "/api/users",
+                             "/api/controls", "/api/incidents", "/api/incidents/"}
     registered = {(rule.rule, method) for rule in app.url_map.iter_rules() for method in rule.methods}
     for api_url in ("/api/compliance-score", "/api/findings", "/api/audit-log"):
         assert (api_url, "GET") in registered
