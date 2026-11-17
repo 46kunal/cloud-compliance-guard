@@ -45,3 +45,6 @@ demo/demo_resources.json
 
 # Build output
 build/
+
+# Local backup written by infra/tamper_demo.py (contains the real audit chain)
+infra/tamper_demo_backup.json
