@@ -43,6 +43,30 @@ def test_implemented_checks_match_rule_ids_in_framework_mapping():
             assert c["rule"] is None
 
 
-def test_only_primary_verified_entries_claim_primary():
-    # Guard against over-claiming: nothing in the draft has been checked against official text yet.
-    assert all(ob["verification"] != "primary" for ob in CATALOG["obligations"])
+OFFICIAL_HOSTS = ("cert-in.org.in", "irdai.gov.in", "sebi.gov.in", "rbi.org.in", "meity.gov.in", "pib.gov.in",
+                  "indiacode.nic.in", "egazette.gov.in")
+
+
+def test_primary_must_be_earned_with_official_sources_and_a_date():
+    for ob in CATALOG["obligations"]:
+        if ob["verification"] != "primary":
+            continue
+        assert ob.get("verified_on"), f"{ob['id']} claims primary without a verification date"
+        assert ob.get("key_points"), f"{ob['id']} claims primary without key points"
+        assert ob["verified_sources"], f"{ob['id']} claims primary without sources"
+        for source in ob["verified_sources"]:
+            host = source["url"].split("/")[2]
+            assert host.endswith(OFFICIAL_HOSTS), f"{ob['id']} cites a non-official host for primary: {host}"
+            assert "third-party" not in source["how_read"] and "explainer" not in source["how_read"]
+
+
+def test_third_party_or_explainer_sources_never_count_as_primary():
+    for ob in CATALOG["obligations"]:
+        for source in ob.get("verified_sources", []):
+            if "third-party" in source["how_read"] or "explainer" in source["how_read"]:
+                assert ob["verification"] != "primary", ob["id"]
+
+
+def test_catalog_does_not_claim_irdai_localisation_without_evidence():
+    irdai = next(o for o in CATALOG["obligations"] if o["id"] == "IRDAI-CYBER")
+    assert "data_residency_india" not in irdai["checks"]

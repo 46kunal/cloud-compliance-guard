@@ -20,10 +20,8 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
-from db.schema import _now, _resource_type, normalize_scan, stable_finding_key
+from db.schema import SERVICE_BY_TYPE, _now, _resource_type, normalize_scan, stable_finding_key
 
-SERVICE_BY_TYPE = {"object_storage": "s3", "iam_policy": "iam", "iam_user": "iam",
-                   "security_group": "ec2", "cloudtrail_config": "cloudtrail"}
 CHAIN = "main"
 
 
@@ -77,6 +75,7 @@ TABLE_DEFINITIONS = {
     "finding_evidence": {"keys": [("finding_id", "N", "HASH"), ("scan_id", "N", "RANGE")]},
     "scan_resources": {"keys": [("scan_id", "N", "HASH"), ("resource_key", "S", "RANGE")]},
     "audit_log": {"keys": [("chain", "S", "HASH"), ("seq", "N", "RANGE")]},
+    "documents": {"keys": [("kind", "S", "HASH"), ("id", "S", "RANGE")]},
 }
 
 
@@ -288,6 +287,45 @@ def _append_audit_entries(store, entries):
                   "previous_hash": entry["previous_hash"], "entry_hash": entry["entry_hash"]},
             ConditionExpression="attribute_not_exists(seq)")
         last_hash = entry["entry_hash"]
+
+
+def list_docs(store, kind):
+    rows = _query_all(store.table("documents"), KeyConditionExpression=Key("kind").eq(kind))
+    return [json.loads(r["data"]) for r in rows]
+
+
+def get_doc(store, kind, doc_id):
+    item = store.table("documents").get_item(Key={"kind": kind, "id": str(doc_id)}).get("Item")
+    return json.loads(item["data"]) if item else None
+
+
+def put_doc(store, kind, doc_id, data):
+    store.table("documents").put_item(Item={"kind": kind, "id": str(doc_id), "data": json.dumps(data, sort_keys=True),
+                                            "updated_at": _now()})
+
+
+def delete_doc(store, kind, doc_id):
+    store.table("documents").delete_item(Key={"kind": kind, "id": str(doc_id)})
+
+
+def append_audit_events(store, events):
+    """Append (event_type, details) pairs to the chain; retried if another writer extends it first."""
+    from lambdas.audit_logger.hash_chain import GENESIS, append_entry
+    for attempt in range(4):
+        chain = get_audit_log(store)
+        previous = chain[-1]["entry_hash"] if chain else GENESIS
+        entries = []
+        for event_type, details in events:
+            entry = append_entry(event_type, details, previous)
+            entries.append(entry)
+            previous = entry["entry_hash"]
+        try:
+            _append_audit_entries(store, entries)
+            return entries
+        except (RuntimeError, ClientError):
+            if attempt == 3:
+                raise
+    return []
 
 
 def get_violations(store):

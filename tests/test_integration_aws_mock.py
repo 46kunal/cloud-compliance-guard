@@ -89,9 +89,9 @@ def test_collectors_detect_exactly_the_generated_misconfigurations(aws):
     expected = _populate(random.Random(7))
     resources = get_all_resources()
     # Exclude resources that are not generated: moto's default VPC security group, the CloudTrail
-    # account resource, and the trail's own log bucket
+    # and IAM account-summary resources, and the trail's own log bucket
     generated = [r for r in resources
-                 if r["resource_type"] not in ("security_group", "cloudtrail_config")
+                 if r["resource_type"] not in ("security_group", "cloudtrail_config", "iam_account", "block_storage")
                  and r["resource_id"] != "trail-logs-bucket"]
     assert len(generated) == 40 + 20 + 30
     assert Counter(v["rule"] for v in run_rule_engine(resources)) == expected

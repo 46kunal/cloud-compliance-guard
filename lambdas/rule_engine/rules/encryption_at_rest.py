@@ -3,7 +3,7 @@ Rule: encryption_at_rest
 Checks that storage resources (S3 buckets, EBS volumes) are encrypted at rest.
 """
 
-STORAGE_TYPES = ("object_storage", "block_storage")
+STORAGE_TYPES = ("object_storage", "block_storage", "database", "file_storage", "nosql_table")
 
 
 def check(resource: dict) -> dict:

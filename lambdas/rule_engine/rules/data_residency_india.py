@@ -7,7 +7,7 @@ the data and the entity. Resources whose region was not collected are not flagge
 """
 PROFILE = "india"
 INDIA_REGIONS = ("ap-south-1", "ap-south-2")
-CHECKED_TYPES = ("object_storage", "security_group", "block_storage", "database")
+CHECKED_TYPES = ("object_storage", "security_group", "block_storage", "database", "file_storage", "nosql_table")
 
 
 def check(resource: dict) -> dict:

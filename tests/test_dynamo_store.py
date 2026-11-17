@@ -113,3 +113,29 @@ def test_facade_picks_backend_from_environment(monkeypatch):
     conn = store.connect()
     assert isinstance(conn, DynamoStore)
     assert store.get_latest_scan(conn) is None
+
+
+# ---- generic documents and admin audit events (used by accounts, controls and incidents) ----
+@mock_aws
+def test_documents_round_trip_on_both_backends(tmp_path):
+    for _name, conn in _backends(tmp_path):
+        assert store.list_docs(conn, "controls") == []
+        store.put_doc(conn, "controls", "C1", {"id": "C1", "status": "in_progress", "nested": {"a": [1, 2]}})
+        store.put_doc(conn, "controls", "C1", {"id": "C1", "status": "attested", "nested": {"a": [1, 2]}})
+        store.put_doc(conn, "accounts", "1", {"id": "1"})
+        assert store.get_doc(conn, "controls", "C1")["status"] == "attested"
+        assert [d["id"] for d in store.list_docs(conn, "controls")] == ["C1"]
+        store.delete_doc(conn, "controls", "C1")
+        assert store.get_doc(conn, "controls", "C1") is None and len(store.list_docs(conn, "accounts")) == 1
+
+
+@mock_aws
+def test_admin_actions_extend_the_audit_chain_on_both_backends(tmp_path):
+    for _name, conn in _backends(tmp_path):
+        scanner.scan_and_save(conn, [_sg()])
+        before = len(store.get_audit_log(conn))
+        store.append_audit_events(conn, [("USER_CREATED", {"actor": "pgadmin", "user": "asha"}),
+                                         ("ACCOUNT_ADDED", {"actor": "pgadmin", "account": "1"})])
+        chain = store.get_audit_log(conn)
+        assert len(chain) == before + 2 and verify_chain(chain)
+        assert chain[-1]["event_type"] == "ACCOUNT_ADDED"

@@ -52,12 +52,37 @@ RULE_DETAILS = {
         "guardduty_enabled", True,
         "No enabled GuardDuty detector was found in the scanned region.",
     ),
+    "vpc_flow_logs": (
+        "vpcs_without_flow_logs", "an active flow log on every VPC",
+        "One or more VPCs in the scanned region have no active VPC-level flow log.",
+    ),
+    "root_mfa": (
+        "root_mfa_enabled", "root MFA enabled and no root access keys",
+        "The root account has no MFA device, or it has active access keys.",
+    ),
+    "stale_access_keys": (
+        "stale_access_keys", "no active access key past the rotation limit",
+        "The IAM user has an active access key older than the rotation limit.",
+    ),
+    "s3_access_logging": (
+        "logging_enabled", True,
+        "Server access logging is off on a bucket tagged as holding personal data.",
+    ),
+    "retention_lifecycle": (
+        "lifecycle_defined", True,
+        "A bucket tagged as holding personal data has no enabled lifecycle (expiry) rule.",
+    ),
+    "backup_enabled": (
+        "backup_enabled", True,
+        "No backup was found for this resource (automated backups, point-in-time recovery or snapshots).",
+    ),
+    "log_location_india": (
+        "trail_logs_outside_india", "CloudTrail logs stored in an Indian region",
+        "A CloudTrail trail delivers logs outside ap-south-1 and ap-south-2. CERT-In FAQ Q35 allows copies abroad if producible in reasonable time; IRDAI, SEBI and RBI rules are stricter. A review pointer, not a legal finding.",
+    ),
 }
 
-SERVICE_BY_TYPE = {
-    "object_storage": "s3", "iam_policy": "iam", "iam_user": "iam",
-    "security_group": "ec2", "cloudtrail_config": "cloudtrail",
-}
+from db.schema import SERVICE_BY_TYPE  # noqa: E402  (single shared map)
 RULE_GUIDANCE = {
     "public_storage": "Restrict public access to the storage resource using the existing public-storage remediation guidance.",
     "encryption_at_rest": "Enable encryption at rest using the existing encryption remediation guidance.",
@@ -71,6 +96,13 @@ RULE_GUIDANCE = {
     "log_retention_365d": "Set the log group retention to at least 365 days (or never expire) for logs in scope.",
     "s3_versioning": "Enable versioning on the bucket, and consider MFA delete or object lock for critical data.",
     "threat_detection_enabled": "Enable Amazon GuardDuty and route high-severity findings to an alert channel.",
+    "vpc_flow_logs": "Create a VPC flow log (to CloudWatch Logs or S3 in an Indian region) for each VPC and keep it for the required retention.",
+    "root_mfa": "Enable a hardware or virtual MFA device on the root account and delete any root access keys.",
+    "stale_access_keys": "Rotate or delete the access key, and prefer IAM roles over long-lived keys.",
+    "s3_access_logging": "Enable server access logging to a separate log bucket in an Indian region.",
+    "retention_lifecycle": "Add a lifecycle rule that expires or archives personal data when its purpose ends, in line with your retention policy.",
+    "backup_enabled": "Turn on automated backups, point-in-time recovery or an AWS Backup plan for this resource.",
+    "log_location_india": "Deliver CloudTrail logs to an S3 bucket or log group in ap-south-1 or ap-south-2.",
 }
 
 SENSITIVE_KEY_PARTS = ("secret", "password", "credential", "accesskey", "token", "privatekey")
@@ -89,11 +121,21 @@ def _safe_value(value, key=""):
     return str(value)
 
 
+OBSERVED_KEYS = {
+    "vpc_flow_logs": ("vpcs_without_flow_logs",), "root_mfa": ("root_mfa_enabled", "root_access_keys_present"),
+    "stale_access_keys": ("stale_access_keys", "max_key_age_days"), "s3_access_logging": ("logging_enabled",),
+    "retention_lifecycle": ("lifecycle_defined",), "backup_enabled": ("backup_enabled",),
+    "log_location_india": ("trail_logs_outside_india",),
+}
+
+
 def _observed(rule, resource):
     if rule in ("public_storage", "encryption_at_rest", "cloudtrail_enabled", "data_residency_india",
                 "tls_enforcement", "s3_versioning", "threat_detection_enabled"):
         key = RULE_DETAILS[rule][0]
         return {key: resource.get(key)}
+    if rule in OBSERVED_KEYS:
+        return {key: resource.get(key) for key in OBSERVED_KEYS[rule]}
     if rule in ("log_retention_180d", "log_retention_365d"):
         minimum = 180 if rule == "log_retention_180d" else 365
         groups = resource.get("short_retention_log_groups") or []
@@ -166,6 +208,10 @@ def build_evidence_records(classified, resources, scan_id, detected_at, account_
             "data_residency_india": ("region",), "tls_enforcement": ("tls_enforced",),
             "log_retention_180d": ("short_retention_log_groups",), "log_retention_365d": ("short_retention_log_groups",),
             "s3_versioning": ("versioning_enabled",), "threat_detection_enabled": ("guardduty_enabled",),
+            "vpc_flow_logs": ("vpcs_without_flow_logs",), "root_mfa": ("root_mfa_enabled",),
+            "stale_access_keys": ("stale_access_keys",), "s3_access_logging": ("logging_enabled",),
+            "retention_lifecycle": ("lifecycle_defined",), "backup_enabled": ("backup_enabled",),
+            "log_location_india": ("trail_logs_outside_india",),
         }[rule]
         collection_status = "COLLECTED" if all(key in resource for key in required_keys) else "PARTIAL"
         if collection_status == "PARTIAL":

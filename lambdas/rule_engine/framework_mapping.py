@@ -12,6 +12,13 @@ PRIVACY_CLAUSE_MAP = {
     "log_retention_365d": "DPDP Rules 2025 Rule 6 — One-year Log Retention",
     "s3_versioning": "DPDP Rules 2025 Rule 6 — Backup and Continuity Safeguard",
     "threat_detection_enabled": "DPDP Rules 2025 Rule 7 — Breach Detection Capability",
+    "vpc_flow_logs": "DPDP Rules 2025 Rule 6 — Logging and Monitoring (network traffic)",
+    "root_mfa": "DPDP Rules 2025 Rule 6 — Access Control (root account)",
+    "stale_access_keys": "DPDP Rules 2025 Rule 6 — Access Control (credential rotation)",
+    "s3_access_logging": "DPDP Rules 2025 Rule 6 — Logging and Monitoring (access to personal data)",
+    "retention_lifecycle": "DPDP Act 2023 Sec. 8(7) — Erasure when Purpose is Served",
+    "backup_enabled": "DPDP Rules 2025 Rule 6 — Backup and Continuity Safeguard",
+    "log_location_india": "CERT-In Directions 2022 and IRDAI/SEBI/RBI sector rules — Log Location (review pointer; CERT-In FAQ Q35 permits producible copies abroad)",
 }
 
 SECURITY_CONTROL_MAP = {
@@ -28,6 +35,13 @@ SECURITY_CONTROL_MAP = {
     "log_retention_365d": "DPDP Rules 2025 Rule 6 — One-year Log Retention",
     "s3_versioning": "AWS Well-Architected Security — S3 Versioning for Recovery",
     "threat_detection_enabled": "CERT-In Directions 2022 — Incident Detection and 6-hour Reporting Readiness",
+    "vpc_flow_logs": "CIS AWS Foundations Benchmark — VPC Flow Logging Enabled",
+    "root_mfa": "CIS AWS Foundations Benchmark — Root Account MFA and No Root Access Keys",
+    "stale_access_keys": "CIS AWS Foundations Benchmark — Rotate IAM Access Keys",
+    "s3_access_logging": "AWS Well-Architected Security — S3 Server Access Logging",
+    "retention_lifecycle": "AWS Well-Architected Security — Data Lifecycle Management",
+    "backup_enabled": "AWS Well-Architected Reliability — Back Up Data",
+    "log_location_india": "CERT-In Directions 2022 and IRDAI/SEBI/RBI sector rules — Log Location (review pointer; CERT-In FAQ Q35 permits producible copies abroad)",
 }
 
 RULE_TO_CLAUSE = SECURITY_CONTROL_MAP

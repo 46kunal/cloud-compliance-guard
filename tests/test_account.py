@@ -258,7 +258,16 @@ def test_guardduty_not_subscribed_means_threat_detection_is_off_not_a_failed_rea
         def list_detectors(self):
             raise ClientError({"Error": {"Code": "SubscriptionRequiredException"}}, "ListDetectors")
 
-    monkeypatch.setattr(handler.boto3, "client", lambda name, **kw: Logs() if name == "logs" else GuardDuty())
+    class Quiet:
+        """Stands in for the EC2 and S3 calls made by the same collector: nothing to report."""
+        def get_paginator(self, name):
+            return type("P", (), {"paginate": lambda self, **kw: [{}]})()
+
+        def describe_vpcs(self):
+            return {"Vpcs": []}
+
+    monkeypatch.setattr(handler.boto3, "client",
+                        lambda name, **kw: Logs() if name == "logs" else GuardDuty() if name == "guardduty" else Quiet())
     report = {"cloudtrail": {"status": "SUCCESS", "errors": []}}
     extra = handler._collect_logging_and_detection("ap-south-1", report)
     assert extra["guardduty_enabled"] is False
@@ -284,3 +293,12 @@ def test_failed_sign_in_keeps_the_username_but_never_the_password_and_escapes_it
     assert response.status_code == 401 and "Incorrect username or password." in html
     assert "wrong-pass" not in html
     assert "<script>x</script>" not in html and "&lt;script&gt;" in html       # the echoed username is escaped
+
+
+def test_region_falls_back_to_aws_region_which_is_what_the_ec2_servers_set(monkeypatch):
+    import types
+    monkeypatch.setattr(account.boto3.session, "Session", lambda: types.SimpleNamespace(region_name=None))
+    monkeypatch.setenv("AWS_REGION", "ap-south-1")
+    assert account._region() == "ap-south-1"
+    monkeypatch.delenv("AWS_REGION")
+    assert account._region() == "us-east-1"

@@ -11,10 +11,11 @@ def classify(violation: dict) -> str:
     """
     rule = violation.get("rule", "") if isinstance(violation, dict) else ""
 
-    if rule in ("public_storage", "wildcard_permission", "open_admin_ports"):
+    if rule in ("public_storage", "wildcard_permission", "open_admin_ports", "root_mfa"):
         return "HIGH"
     elif rule in ("encryption_at_rest", "mfa_required", "cloudtrail_enabled", "log_retention_180d",
-                  "log_retention_365d", "tls_enforcement", "threat_detection_enabled", "data_residency_india"):
+                  "log_retention_365d", "tls_enforcement", "threat_detection_enabled", "data_residency_india",
+                  "stale_access_keys", "vpc_flow_logs", "backup_enabled"):
         return "MEDIUM"
     else:
         return "LOW"

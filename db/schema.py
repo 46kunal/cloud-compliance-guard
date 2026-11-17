@@ -72,6 +72,13 @@ CREATE TABLE IF NOT EXISTS finding_evidence (
     FOREIGN KEY(scan_id) REFERENCES scans(id),
     UNIQUE(finding_id, scan_id)
 );
+CREATE TABLE IF NOT EXISTS documents (
+    kind TEXT NOT NULL,
+    id TEXT NOT NULL,
+    data TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (kind, id)
+);
 CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS scan_resources (
     scan_id INTEGER NOT NULL,
@@ -97,13 +104,28 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
+# One place that says which AWS service owns each normalised resource type. A finding may only be
+# resolved when the service that owns its resource type was collected successfully in that scan.
+SERVICE_BY_TYPE = {
+    "object_storage": "s3", "iam_policy": "iam", "iam_user": "iam", "iam_account": "iam",
+    "security_group": "ec2", "block_storage": "ec2", "cloudtrail_config": "cloudtrail",
+    "database": "rds", "nosql_table": "dynamodb", "file_storage": "efs",
+}
+
+RULE_RESOURCE_TYPE = {
+    "public_storage": "object_storage", "encryption_at_rest": "object_storage",
+    "wildcard_permission": "iam_policy", "mfa_required": "iam_user", "stale_access_keys": "iam_user",
+    "root_mfa": "iam_account", "open_admin_ports": "security_group", "cloudtrail_enabled": "cloudtrail_config",
+    "tls_enforcement": "object_storage", "s3_versioning": "object_storage", "s3_access_logging": "object_storage",
+    "retention_lifecycle": "object_storage", "data_residency_india": "object_storage",
+    "backup_enabled": "database", "log_retention_180d": "cloudtrail_config",
+    "log_retention_365d": "cloudtrail_config", "threat_detection_enabled": "cloudtrail_config",
+    "vpc_flow_logs": "cloudtrail_config", "log_location_india": "cloudtrail_config",
+}
+
+
 def _resource_type(rule):
-    return {"public_storage": "object_storage", "encryption_at_rest": "object_storage",
-            "wildcard_permission": "iam_policy", "mfa_required": "iam_user",
-            "open_admin_ports": "security_group", "cloudtrail_enabled": "cloudtrail_config",
-            "tls_enforcement": "object_storage", "s3_versioning": "object_storage",
-            "data_residency_india": "object_storage", "log_retention_180d": "cloudtrail_config",
-            "log_retention_365d": "cloudtrail_config", "threat_detection_enabled": "cloudtrail_config"}.get(rule, "unknown")
+    return RULE_RESOURCE_TYPE.get(rule, "unknown")
 
 
 def stable_finding_key(rule, provider, account_scope, resource_type, resource_id):
@@ -180,7 +202,7 @@ def save_scan(conn, resources_scanned: int, classified: list, remediation: list,
             "INSERT OR IGNORE INTO scan_resources (scan_id,resource_key,resource_id,resource_type,service) VALUES (?,?,?,?,?)",
             [(scan_id, stable_finding_key("resource", "aws", account_scope, r.get("resource_type"), r.get("resource_id")),
               r.get("resource_id", ""), r.get("resource_type", "unknown"),
-              {"object_storage": "s3", "iam_policy": "iam", "iam_user": "iam", "security_group": "ec2", "cloudtrail_config": "cloudtrail"}.get(r.get("resource_type"), "unknown"))
+              SERVICE_BY_TYPE.get(r.get("resource_type"), "unknown"))
              for r in assessed_resource_records or []],
         )
 
@@ -208,8 +230,7 @@ def save_scan(conn, resources_scanned: int, classified: list, remediation: list,
                              (fid, scan_id, now, json.dumps(violation)))
             else:
                 old_status = row["status"]
-                source_service = {"object_storage": "s3", "iam_policy": "iam", "iam_user": "iam",
-                                  "security_group": "ec2", "cloudtrail_config": "cloudtrail"}.get(resource_type)
+                source_service = SERVICE_BY_TYPE.get(resource_type)
                 source_assessed = (service_statuses or {}).get(source_service, {}).get("status") == "SUCCESS"
                 if old_status == "RESOLVED":
                     new_status = "REOPENED"
@@ -229,8 +250,7 @@ def save_scan(conn, resources_scanned: int, classified: list, remediation: list,
         if allow_resolve:
             for row in conn.execute("SELECT * FROM findings WHERE status IN ('NEW','ACTIVE','REOPENED')").fetchall():
                 # A missing finding may resolve only if its collector succeeded in this scan.
-                service = {"object_storage": "s3", "iam_policy": "iam", "iam_user": "iam",
-                           "security_group": "ec2", "cloudtrail_config": "cloudtrail"}.get(row["resource_type"])
+                service = SERVICE_BY_TYPE.get(row["resource_type"])
                 if service and (service_statuses or {}).get(service, {}).get("status") == "SUCCESS" and row["account_scope"] == account_scope:
                     was_present = (row["rule"], row["resource_id"]) in detected
                     if not was_present:
@@ -318,6 +338,44 @@ def get_finding_evidence(conn, finding_id):
                      "evidence_sha256": row["evidence_sha256"]})
         result.append(item)
     return result
+
+
+def list_docs(conn, kind):
+    return [json.loads(r["data"]) for r in conn.execute("SELECT data FROM documents WHERE kind=? ORDER BY id", (kind,))]
+
+
+def get_doc(conn, kind, doc_id):
+    row = conn.execute("SELECT data FROM documents WHERE kind=? AND id=?", (kind, str(doc_id))).fetchone()
+    return json.loads(row["data"]) if row else None
+
+
+def put_doc(conn, kind, doc_id, data):
+    with conn:
+        conn.execute("INSERT INTO documents (kind,id,data,updated_at) VALUES (?,?,?,?) "
+                     "ON CONFLICT(kind,id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at",
+                     (kind, str(doc_id), json.dumps(data, sort_keys=True), _now()))
+
+
+def delete_doc(conn, kind, doc_id):
+    with conn:
+        conn.execute("DELETE FROM documents WHERE kind=? AND id=?", (kind, str(doc_id)))
+
+
+def append_audit_events(conn, events):
+    """Append (event_type, details) pairs to the audit chain, continuing from its current head."""
+    from lambdas.audit_logger.hash_chain import GENESIS, append_entry
+    chain = get_audit_log(conn)
+    previous = chain[-1]["entry_hash"] if chain else GENESIS
+    entries = []
+    for event_type, details in events:
+        entry = append_entry(event_type, details, previous)
+        entries.append(entry)
+        previous = entry["entry_hash"]
+    with conn:
+        conn.executemany(
+            "INSERT INTO audit_log (id,timestamp,event_type,details,previous_hash,entry_hash) VALUES (?,?,?,?,?,?)",
+            [(e["id"], e["timestamp"], e["event_type"], json.dumps(e["details"]), e["previous_hash"], e["entry_hash"]) for e in entries])
+    return entries
 
 
 def get_audit_log(conn) -> list:

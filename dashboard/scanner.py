@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 import boto3
 
+from db.schema import SERVICE_BY_TYPE
 from db.store import begin_scan, connect, count_finding_events, get_audit_log, get_violations, save_scan
 from dashboard import account as _account
 from dashboard.evidence import build_evidence_records
@@ -16,7 +17,7 @@ from lambdas.risk_classifier.handler import classify_violations
 from lambdas.rule_engine.handler import get_all_resources, run_rule_engine
 
 _scan_lock = _account.scan_lock  # shared so the monitored account is never switched mid-scan
-SERVICES = ("s3", "iam", "ec2", "cloudtrail")
+SERVICES = ("s3", "iam", "ec2", "cloudtrail", "rds", "dynamodb", "efs")
 
 
 def _key(v: dict) -> tuple:
@@ -76,12 +77,10 @@ def scan_and_save(conn, resources: list = None, collection_report: dict = None) 
 
         status = _scan_status(report, engine_ok)
         successful_services = {name for name in SERVICES if engine_ok and report[name]["status"] == "SUCCESS"}
-        resource_service = {
-            "object_storage": "s3", "iam_policy": "iam", "iam_user": "iam",
-            "security_group": "ec2", "cloudtrail_config": "cloudtrail",
-        }
-        assessed_resources = [r for r in resources if resource_service.get(r.get("resource_type")) in successful_services]
-        previous = get_violations(conn)
+        assessed_resources = [r for r in resources if SERVICE_BY_TYPE.get(r.get("resource_type")) in successful_services]
+        # Only this account's findings take part: other accounts can have the same rule + resource id
+        # (for example every account has a "cloudtrail:account-wide" resource).
+        previous = [v for v in get_violations(conn) if v.get("account_scope") in (account_scope, "legacy")]
         prev_keys = {_key(v) for v in previous}
         cur_keys = {_key(v) for v in classified}
         new = [v for v in classified if _key(v) not in prev_keys]
@@ -100,11 +99,9 @@ def scan_and_save(conn, resources: list = None, collection_report: dict = None) 
         )
         events = [("VIOLATION_DETECTED", v) for v in new]
         events += [("REMEDIATION", r) for r in new_results]
-        source_service = {"public_storage": "s3", "encryption_at_rest": "s3", "wildcard_permission": "iam",
-                          "mfa_required": "iam", "open_admin_ports": "ec2", "cloudtrail_enabled": "cloudtrail"}
         if status != "FAILED":
             for finding in previous:
-                service = source_service.get(finding.get("rule"))
+                service = SERVICE_BY_TYPE.get(finding.get("resource_type"))
                 if _key(finding) not in cur_keys and service in successful_services:
                     events.append(("VIOLATION_RESOLVED", {k: finding.get(k) for k in ("rule", "resource_id", "clause", "severity")}))
 

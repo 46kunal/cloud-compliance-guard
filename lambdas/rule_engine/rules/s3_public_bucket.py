@@ -13,7 +13,7 @@ def check(resource: dict) -> dict:
     is_public = resource.get("is_public", False)
 
     # Flag non-compliant when is_public is True and resource_type is "object_storage"
-    is_compliant = not (is_public and resource_type == "object_storage")
+    is_compliant = not (is_public and resource_type in ("object_storage", "database"))
 
     return {
         "compliant": is_compliant,

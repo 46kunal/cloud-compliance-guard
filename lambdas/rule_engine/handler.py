@@ -3,6 +3,8 @@ import importlib.util
 import json
 import os
 import sys
+from datetime import datetime, timezone
+
 import boto3
 
 try:
@@ -166,6 +168,19 @@ def get_normalized_s3_resources(collection_report=None) -> list:
                 extra["versioning_enabled"] = versioning.get("Status") == "Enabled"
             except Exception as e:
                 _record_collection(collection_report, "s3", "PARTIAL", f"Bucket versioning could not be read: {e}")
+            try:
+                logging_config = s3_client.get_bucket_logging(Bucket=bucket_name)
+                extra["logging_enabled"] = "LoggingEnabled" in logging_config
+            except Exception as e:
+                _record_collection(collection_report, "s3", "PARTIAL", f"Bucket access logging could not be read: {e}")
+            try:
+                rules = s3_client.get_bucket_lifecycle_configuration(Bucket=bucket_name).get("Rules", [])
+                extra["lifecycle_defined"] = any(r.get("Status") == "Enabled" for r in rules)
+            except Exception as e:
+                if _permission_or_api_failure(e, ("NoSuchLifecycleConfiguration",)):
+                    _record_collection(collection_report, "s3", "PARTIAL", f"Bucket lifecycle could not be read: {e}")
+                else:
+                    extra["lifecycle_defined"] = False
 
             tags = {}
             try:
@@ -258,6 +273,20 @@ def get_normalized_iam_resources(collection_report=None) -> list:
                         resource_complete = False
                     mfa_enabled = False
 
+                user_extra = {}
+                try:
+                    max_age = int(os.environ.get("POLICYGUARD_KEY_MAX_AGE_DAYS", "90"))
+                    now = datetime.now(timezone.utc)
+                    stale = []
+                    for key in iam_client.list_access_keys(UserName=user_name).get("AccessKeyMetadata", []):
+                        age = (now - key["CreateDate"]).days
+                        if key.get("Status") == "Active" and age >= max_age:
+                            stale.append({"key_suffix": key["AccessKeyId"][-4:], "age_days": age})
+                    user_extra["stale_access_keys"] = stale
+                    user_extra["max_key_age_days"] = max_age
+                except Exception as e:
+                    _record_collection(collection_report, "iam", "PARTIAL", f"Access keys for {user_name} unavailable: {e}")
+
                 resources.append({
                     "resource_type": "iam_user",
                     "provider": "aws",
@@ -269,7 +298,19 @@ def get_normalized_iam_resources(collection_report=None) -> list:
                     "has_console_access": has_console_access,
                     "mfa_enabled": mfa_enabled,
                     "_collection_complete": resource_complete,
+                    **user_extra,
                 })
+
+        try:
+            summary = iam_client.get_account_summary().get("SummaryMap", {})
+            resources.append({
+                "resource_type": "iam_account", "provider": "aws", "resource_id": "iam:account-summary",
+                "is_public": False, "encrypted": True, "permissions": [], "tags": {},
+                "root_mfa_enabled": summary.get("AccountMFAEnabled", 0) == 1,
+                "root_access_keys_present": summary.get("AccountAccessKeysPresent", 0) > 0,
+            })
+        except Exception as e:
+            _record_collection(collection_report, "iam", "PARTIAL", f"Account summary unavailable: {e}")
     except Exception as e:
         _record_collection(collection_report, "iam", "FAILED", e)
         print(f"[DETECT] WARNING: IAM scan failed: {e}", file=sys.stderr)
@@ -316,13 +357,32 @@ def get_normalized_ec2_resources(collection_report=None) -> list:
     except Exception as e:
         _record_collection(collection_report, "ec2", "FAILED", e)
         print(f"[DETECT] WARNING: EC2 scan failed: {e}", file=sys.stderr)
+        return resources
+
+    try:
+        with_snapshots = set()
+        for page in ec2_client.get_paginator("describe_snapshots").paginate(OwnerIds=["self"]):
+            with_snapshots.update(snap.get("VolumeId") for snap in page.get("Snapshots", []))
+        for page in ec2_client.get_paginator("describe_volumes").paginate():
+            for volume in page.get("Volumes", []):
+                resources.append({
+                    "resource_type": "block_storage", "provider": "aws", "resource_id": volume["VolumeId"],
+                    "region": region, "is_public": False, "encrypted": bool(volume.get("Encrypted")),
+                    "backup_enabled": volume["VolumeId"] in with_snapshots, "permissions": [],
+                    "tags": {t["Key"]: t["Value"] for t in volume.get("Tags", []) if "Key" in t and "Value" in t},
+                })
+    except Exception as e:
+        _record_collection(collection_report, "ec2", "PARTIAL", f"EBS volumes could not be read: {e}")
 
     _record_collection(collection_report, "ec2")
 
     return resources
 
 
-def _collect_logging_and_detection(region, collection_report):
+INDIA_REGIONS = ("ap-south-1", "ap-south-2")
+
+
+def _collect_logging_and_detection(region, collection_report, trails=()):
     """Account-level facts for the India profile: log-group retention and GuardDuty status.
     A failed call leaves its key out, so the matching rule is skipped rather than guessing."""
     extra = {}
@@ -337,6 +397,34 @@ def _collect_logging_and_detection(region, collection_report):
         extra["short_retention_log_groups"] = short
     except Exception as e:
         _record_collection(collection_report, "cloudtrail", "PARTIAL", f"Log group retention could not be read: {e}")
+    try:
+        ec2 = boto3.client("ec2", region_name=region)
+        covered = set()
+        for page in ec2.get_paginator("describe_flow_logs").paginate():
+            for flow_log in page.get("FlowLogs", []):
+                if flow_log.get("FlowLogStatus") == "ACTIVE":
+                    covered.add(flow_log.get("ResourceId"))
+        vpcs = [v["VpcId"] for v in ec2.describe_vpcs().get("Vpcs", [])]
+        extra["vpcs_without_flow_logs"] = [v for v in vpcs if v not in covered]
+    except Exception as e:
+        _record_collection(collection_report, "cloudtrail", "PARTIAL", f"VPC flow logs could not be read: {e}")
+    try:
+        s3 = boto3.client("s3")
+        outside = []
+        for trail in trails:
+            bucket_region = None
+            if trail.get("S3BucketName"):
+                location = s3.get_bucket_location(Bucket=trail["S3BucketName"]).get("LocationConstraint")
+                bucket_region = {None: "us-east-1", "": "us-east-1", "EU": "eu-west-1"}.get(location, location)
+            group_arn = trail.get("CloudWatchLogsLogGroupArn") or ""
+            group_region = group_arn.split(":")[3] if group_arn.count(":") >= 3 else None
+            bad = [r for r in (bucket_region, group_region) if r and r not in INDIA_REGIONS]
+            if bad:
+                outside.append({"trail": trail.get("Name"), "bucket": trail.get("S3BucketName"),
+                                "bucket_region": bucket_region, "log_group_region": group_region})
+        extra["trail_logs_outside_india"] = outside
+    except Exception as e:
+        _record_collection(collection_report, "cloudtrail", "PARTIAL", f"Trail log locations could not be read: {e}")
     try:
         client = boto3.client("guardduty", region_name=region)
         detectors = client.list_detectors().get("DetectorIds", [])
@@ -375,7 +463,7 @@ def get_normalized_cloudtrail_resources(collection_report=None) -> list:
                 active = True
                 break
 
-        extra = _collect_logging_and_detection(region, collection_report)
+        extra = _collect_logging_and_detection(region, collection_report, trails)
         _record_collection(collection_report, "cloudtrail")
         return [{
             "resource_type": "cloudtrail_config",
@@ -395,6 +483,97 @@ def get_normalized_cloudtrail_resources(collection_report=None) -> list:
         return []
 
 
+def _tag_dict(items):
+    return {t["Key"]: t["Value"] for t in items or [] if "Key" in t and "Value" in t}
+
+
+def get_normalized_rds_resources(collection_report=None) -> list:
+    """RDS instances: encryption, public accessibility and automated backup retention."""
+    resources = []
+    try:
+        region = boto3.session.Session().region_name or "us-east-1"
+        client = boto3.client("rds", region_name=region)
+        for page in client.get_paginator("describe_db_instances").paginate():
+            for db in page.get("DBInstances", []):
+                resources.append({
+                    "resource_type": "database", "provider": "aws", "resource_id": db["DBInstanceIdentifier"],
+                    "region": region, "is_public": bool(db.get("PubliclyAccessible")),
+                    "encrypted": bool(db.get("StorageEncrypted")),
+                    "backup_enabled": int(db.get("BackupRetentionPeriod", 0)) > 0, "permissions": [],
+                    "tags": _tag_dict(db.get("TagList")),
+                })
+    except Exception as e:
+        _record_collection(collection_report, "rds", "FAILED", e)
+        print(f"[DETECT] WARNING: RDS scan failed: {e}", file=sys.stderr)
+        return []
+    _record_collection(collection_report, "rds")
+    return resources
+
+
+def get_normalized_dynamodb_resources(collection_report=None) -> list:
+    """DynamoDB tables: point-in-time recovery. Tables are always encrypted at rest by AWS."""
+    resources = []
+    try:
+        region = boto3.session.Session().region_name or "us-east-1"
+        client = boto3.client("dynamodb", region_name=region)
+        names = [n for page in client.get_paginator("list_tables").paginate() for n in page.get("TableNames", [])]
+        for name in names:
+            complete = True
+            table = client.describe_table(TableName=name)["Table"]
+            try:
+                backups = client.describe_continuous_backups(TableName=name)["ContinuousBackupsDescription"]
+                pitr = backups.get("PointInTimeRecoveryDescription", {}).get("PointInTimeRecoveryStatus") == "ENABLED"
+            except Exception as e:
+                _record_collection(collection_report, "dynamodb", "PARTIAL", f"Backups for table {name} unavailable: {e}")
+                complete, pitr = False, False
+            try:
+                tags = _tag_dict(client.list_tags_of_resource(ResourceArn=table["TableArn"]).get("Tags"))
+            except Exception:
+                tags = {}
+            resources.append({
+                "resource_type": "nosql_table", "provider": "aws", "resource_id": name, "region": region,
+                "is_public": False, "encrypted": True, "backup_enabled": pitr, "permissions": [], "tags": tags,
+                "_collection_complete": complete,
+            })
+    except Exception as e:
+        _record_collection(collection_report, "dynamodb", "FAILED", e)
+        print(f"[DETECT] WARNING: DynamoDB scan failed: {e}", file=sys.stderr)
+        return []
+    _record_collection(collection_report, "dynamodb")
+    return resources
+
+
+def get_normalized_efs_resources(collection_report=None) -> list:
+    """EFS file systems: encryption and automatic backups."""
+    resources = []
+    try:
+        region = boto3.session.Session().region_name or "us-east-1"
+        client = boto3.client("efs", region_name=region)
+        for page in client.get_paginator("describe_file_systems").paginate():
+            for fs in page.get("FileSystems", []):
+                complete = True
+                try:
+                    status = client.describe_backup_policy(FileSystemId=fs["FileSystemId"])["BackupPolicy"]["Status"]
+                    backup = status == "ENABLED"
+                except Exception as e:
+                    if _permission_or_api_failure(e, ("PolicyNotFound",)):
+                        _record_collection(collection_report, "efs", "PARTIAL", f"Backup policy for {fs['FileSystemId']} unavailable: {e}")
+                        complete = False
+                    backup = False
+                resources.append({
+                    "resource_type": "file_storage", "provider": "aws", "resource_id": fs["FileSystemId"],
+                    "region": region, "is_public": False, "encrypted": bool(fs.get("Encrypted")),
+                    "backup_enabled": backup, "permissions": [], "tags": _tag_dict(fs.get("Tags")),
+                    "_collection_complete": complete,
+                })
+    except Exception as e:
+        _record_collection(collection_report, "efs", "FAILED", e)
+        print(f"[DETECT] WARNING: EFS scan failed: {e}", file=sys.stderr)
+        return []
+    _record_collection(collection_report, "efs")
+    return resources
+
+
 def get_all_resources(collection_report=None) -> list:
     """Merges every resource collector's output."""
     return (
@@ -402,6 +581,9 @@ def get_all_resources(collection_report=None) -> list:
         + get_normalized_iam_resources(collection_report)
         + get_normalized_ec2_resources(collection_report)
         + get_normalized_cloudtrail_resources(collection_report)
+        + get_normalized_rds_resources(collection_report)
+        + get_normalized_dynamodb_resources(collection_report)
+        + get_normalized_efs_resources(collection_report)
     )
 
 

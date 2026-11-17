@@ -28,7 +28,7 @@ def obligations_for_rule(rule: str) -> list:
     return result
 
 
-def framework_summary(open_findings: list) -> list:
+def framework_summary(open_findings: list, control_status: dict = None) -> list:
     """Per-obligation status for the Frameworks page.
 
     An obligation with automated checks is 'at risk' if any of its rules has an open finding,
@@ -46,12 +46,18 @@ def framework_summary(open_findings: list) -> list:
         pending = [checks[c] for c in ob["checks"] if checks[c]["status"] != "implemented"]
         rules = [c["rule"] for c in implemented]
         findings = [f for rule in rules for f in open_by_rule.get(rule, [])]
-        if not implemented:
-            state = "not_assessed"
-        elif findings:
-            state = "findings_open"
+        controls = (control_status or {}).get(ob["id"])
+        if implemented:
+            state = "findings_open" if findings else "no_open_findings"
+        elif controls and controls["total"]:
+            if controls["attested"] == controls["total"]:
+                state = "attested"
+            elif controls["attested"] or controls["overdue"]:
+                state = "partly_attested"
+            else:
+                state = "needs_attestation"
         else:
-            state = "no_open_findings"
+            state = "not_assessed"
         summary.append({
             "id": ob["id"], "framework": ob["framework"], "citation": ob["citation"], "title": ob["title"],
             "in_force": ob["in_force"], "verification": ob["verification"], "coverage": ob["coverage"],
@@ -59,5 +65,10 @@ def framework_summary(open_findings: list) -> list:
             "automated_checks": [c["title"] for c in implemented],
             "not_yet_automated": [c["title"] for c in pending],
             "notes": ob.get("notes"),
+            "key_points": ob.get("key_points", []),
+            "controls": controls,
+            "verified_on": ob.get("verified_on"),
+            "sources": [{"title": s["title"], "url": s["url"], "how_read": s["how_read"]}
+                        for s in ob.get("verified_sources", []) if str(s.get("url", "")).startswith("https://")],
         })
     return summary
