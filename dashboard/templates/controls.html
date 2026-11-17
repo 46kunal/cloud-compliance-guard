@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="ctl-msg" class="banner banner-bad" role="alert" hidden></div>
+<p class="lead">Some obligations are about how people work, not how the cloud is configured, so they cannot be read from AWS. Here an admin records who owns each control and the evidence for it. PolicyGuard tracks the owner, the evidence, the date and when the review is due. It does not judge whether the evidence is good enough.</p>
+<div class="meta-row" id="ctl-summary"></div>
+<div id="ctl-list" class="stack-lg"><p class="muted">Loading…</p></div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/controls.js') }}"></script>{% endblock %}

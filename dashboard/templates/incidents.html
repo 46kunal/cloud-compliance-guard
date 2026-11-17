@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="inc-msg" class="banner banner-bad" role="alert" hidden></div>
+<p class="lead">When something goes wrong, the clocks start. Cyber incidents of the types in CERT-In Annexure I must be reported to CERT-In within <strong>6 hours</strong> of noticing them. For a personal data breach, DPDP Rule 7 also asks for the Data Protection Board and affected people to be told <strong>without delay</strong>, with a detailed report to the Board within <strong>72 hours</strong>. PolicyGuard tracks the clocks and drafts the text. A person reviews and files it: nothing is sent automatically.</p>
+<section class="panel" id="inc-open" hidden>
+  <div class="panel-head"><h2>Open an incident</h2></div>
+  <form id="inc-form" class="account-form" autocomplete="off">
+    <label class="field"><span>Title</span><input id="i-title" maxlength="120" required></label>
+    <label class="field"><span>Type (CERT-In Annexure I)</span><select id="i-type"></select></label>
+    <label class="field"><span>Detected at (leave empty for now)</span><input id="i-detected" type="datetime-local"></label>
+    <label class="field"><span>Short description</span><input id="i-desc" maxlength="2000"></label>
+    <label class="field"><span>Personal data involved?</span>
+      <select id="i-pd"><option value="no">No</option><option value="yes">Yes (starts the DPDP clocks)</option></select></label>
+    <div class="full"><button class="btn btn-primary" type="submit">Open incident and start the clocks</button></div>
+  </form>
+</section>
+<div id="inc-list" class="stack-lg" style="margin-top:1.25rem"><p class="muted">Loading…</p></div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/incidents.js') }}"></script>{% endblock %}
